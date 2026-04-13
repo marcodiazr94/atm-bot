@@ -8,6 +8,7 @@ import {
 import { Boom } from '@hapi/boom'
 import pino from 'pino'
 import { mkdirSync } from 'fs'
+import qrcode from 'qrcode-terminal'
 import { handleMessage } from './bot.js'
 import { iniciarCronJobs } from './cron/jobs.js'
 
@@ -30,10 +31,10 @@ async function conectar() {
     version,
     auth: state,
     logger,
-    printQRInTerminal: true,       // Muestra el QR en la terminal
+    printQRInTerminal: false,      // Desactivado — lo manejamos manualmente
     browser: ['ATM Bot', 'Chrome', '1.0.0'],
-    syncFullHistory: false,        // No descargar historial antiguo
-    markOnlineOnConnect: false     // No aparecer como "en línea" constantemente
+    syncFullHistory: false,
+    markOnlineOnConnect: false
   })
 
   // ── GUARDAR CREDENCIALES ────────────────────────────────
@@ -43,9 +44,13 @@ async function conectar() {
   sock.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect, qr } = update
 
+    // Mostrar QR en la terminal manualmente
     if (qr) {
-      console.log('\n[BOT] ⚠️  Escanea el QR de arriba con el teléfono de la SIM del bot')
-      console.log('[BOT] Ve a WhatsApp > ... > Dispositivos vinculados > Vincular dispositivo\n')
+      console.log('\n[BOT] ══════════════════════════════════════')
+      console.log('[BOT]  ESCANEA ESTE QR CON WHATSAPP')
+      console.log('[BOT]  WhatsApp > ··· > Dispositivos vinculados')
+      console.log('[BOT] ══════════════════════════════════════\n')
+      qrcode.generate(qr, { small: true })
     }
 
     if (connection === 'close') {
@@ -80,7 +85,6 @@ async function conectar() {
 
   // ── ESCUCHAR MENSAJES ───────────────────────────────────
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
-    // Solo procesar mensajes nuevos (no notificaciones ni historial)
     if (type !== 'notify') return
 
     for (const msg of messages) {
