@@ -1,6 +1,6 @@
-import { guardarMensaje, registrarGrupo } from './database/db.js'
+import { guardarMensaje, registrarGrupo, getGrupo } from './database/db.js'
 import { cmdPendientes } from './commands/pendientes.js'
-import { cmdAñadir } from './commands/añadir.js'
+import { cmdAñadir } from './commands/anadir.js'
 import { cmdHecho } from './commands/hecho.js'
 import { cmdResumen } from './commands/resumen.js'
 import { cmdAyuda } from './commands/ayuda.js'
@@ -9,10 +9,6 @@ import { cmdAyuda } from './commands/ayuda.js'
 // Formato: XXXXXXXXXXX@g.us
 // Los IDs aparecen en los logs cuando el bot recibe el primer mensaje de cada grupo
 const GRUPOS_AUTORIZADOS = (process.env.GRUPOS_AUTORIZADOS || '').split(',').filter(Boolean)
-
-// Número del admin (sin + ni espacios, con código de país)
-// Ejemplo: 34612345678
-const ADMIN_NUMERO = process.env.ADMIN_NUMERO || ''
 
 export async function handleMessage(sock, msg) {
   try {
@@ -38,9 +34,15 @@ export async function handleMessage(sock, msg) {
     // Log para identificar IDs de grupos (útil en el primer arranque)
     console.log(`[MSG] Grupo: ${groupId} | De: ${senderNumero} | Texto: ${texto.substring(0, 50)}`)
 
-    // Registrar el grupo automáticamente si es nuevo
-    // (el nombre real se puede actualizar manualmente en la BD)
-    registrarGrupo(groupId, groupId)
+    // Registrar el grupo automáticamente si es nuevo, usando el nombre real del grupo
+    if (!getGrupo(groupId)) {
+      try {
+        const metadata = await sock.groupMetadata(groupId)
+        registrarGrupo(groupId, metadata.subject || groupId)
+      } catch {
+        registrarGrupo(groupId, groupId)
+      }
+    }
 
     // ── WHITELIST ────────────────────────────────────────────
     // Si hay grupos configurados, solo actuar en ellos
