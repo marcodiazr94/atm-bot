@@ -1,21 +1,20 @@
-// Wrapper para la API de Claude (Anthropic)
+// Wrapper para la API de ChatGPT (OpenAI)
 
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY
 
 export async function callClaude(prompt) {
-  if (!ANTHROPIC_API_KEY) {
-    throw new Error('ANTHROPIC_API_KEY no configurada en variables de entorno')
+  if (!OPENAI_API_KEY) {
+    throw new Error('OPENAI_API_KEY no configurada en variables de entorno')
   }
 
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-api-key': ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01'
+      'Authorization': `Bearer ${OPENAI_API_KEY}`
     },
     body: JSON.stringify({
-      model: 'claude-opus-4-6',
+      model: 'gpt-4o',
       max_tokens: 1000,
       messages: [{ role: 'user', content: prompt }]
     })
@@ -23,11 +22,11 @@ export async function callClaude(prompt) {
 
   if (!response.ok) {
     const err = await response.text()
-    throw new Error(`Error Claude API: ${response.status} — ${err}`)
+    throw new Error(`Error OpenAI API: ${response.status} — ${err}`)
   }
 
   const data = await response.json()
-  return data.content[0].text
+  return data.choices[0].message.content
 }
 
 export async function resumirConversacion(mensajes, nombreGrupo, horas) {
