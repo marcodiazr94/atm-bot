@@ -10,9 +10,9 @@ export async function cmdAñadir(sock, groupId, sender, args) {
     return
   }
 
-  // Si el input contiene ' - ', tratar como lista de tareas múltiples
+  // Separar por guión precedido de inicio de cadena o espacios: "- tarea", " -tarea", " - tarea"
   const tareas = input
-    .split(' - ')
+    .split(/(?:^|\s+)-\s*/)
     .map(t => t.trim())
     .filter(t => t.length > 0)
 
