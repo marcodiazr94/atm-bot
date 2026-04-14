@@ -1,7 +1,9 @@
 import cron from 'node-cron'
 import { getGruposActivos, getPendientes, limpiarMensajesAntiguos } from '../database/db.js'
 
-export function iniciarCronJobs(sock) {
+// Recibe getSock: función que devuelve el socket activo en cada momento.
+// Así si el bot se reconecta y cambia de socket, el cron siempre usa el nuevo.
+export function iniciarCronJobs(getSock) {
 
   // ── RESUMEN DIARIO DE PENDIENTES ─────────────────────────
   // Todos los días a las 9:00 (hora España)
@@ -9,6 +11,12 @@ export function iniciarCronJobs(sock) {
 
   cron.schedule(horaDiaria, async () => {
     console.log('[CRON] Ejecutando resumen diario de pendientes...')
+
+    const sock = getSock()
+    if (!sock) {
+      console.warn('[CRON] Bot desconectado, saltando resumen diario')
+      return
+    }
 
     try {
       const grupos = getGruposActivos()
