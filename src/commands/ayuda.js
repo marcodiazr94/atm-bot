@@ -23,6 +23,9 @@ export async function cmdAyuda(sock, groupId) {
   _Ejemplo: !resumen 8_
 
 🌐 *Panel de administración web:*
+https://atm-bot-production.up.railway.app/
+https://atm-bot-production.up.railway.app/admin
+
 Accede desde el navegador para gestionar el bot visualmente:
   • Ver y completar tareas pendientes de todos los grupos
   • Activar o desactivar grupos con un toggle — si desactivas un grupo el bot deja de responder en él
