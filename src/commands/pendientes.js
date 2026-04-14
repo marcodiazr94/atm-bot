@@ -15,6 +15,6 @@ export async function cmdPendientes(sock, groupId) {
     .join('\n')
 
   await sock.sendMessage(groupId, {
-    text: `📋 *Pendientes (${tareas.length}):*\n\n${lista}\n\n_Escribe !hecho [número] para marcar como completado_`
+    text: `📋 *Pendientes (${tareas.length}):*\n\n${lista}\n\n_!hecho [número] — ej: !hecho 2 o !hecho 1 3 5_`
   })
 }
