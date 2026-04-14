@@ -4,11 +4,13 @@ import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const DB_PATH = join(__dirname, '../../data/atm.db')
 
-// Crea el directorio data si no existe
+// En Railway solo hay un volumen persistente (/app/auth).
+// Se puede sobreescribir con la variable de entorno DB_PATH.
+const DB_PATH = process.env.DB_PATH || join(__dirname, '../../auth/atm.db')
+
 import { mkdirSync } from 'fs'
-mkdirSync(join(__dirname, '../../data'), { recursive: true })
+mkdirSync(dirname(DB_PATH), { recursive: true })
 
 const db = new Database(DB_PATH)
 
