@@ -133,4 +133,16 @@ export function getGrupo(groupId) {
   `).get(groupId)
 }
 
+export function getAllGrupos() {
+  return db.prepare(`
+    SELECT * FROM grupos_config ORDER BY activo DESC, nombre ASC
+  `).all()
+}
+
+export function setGrupoActivo(groupId, activo) {
+  return db.prepare(`
+    UPDATE grupos_config SET activo = ? WHERE group_id = ?
+  `).run(activo ? 1 : 0, groupId)
+}
+
 export default db

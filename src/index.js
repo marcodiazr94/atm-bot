@@ -11,7 +11,7 @@ import { mkdirSync } from 'fs'
 import { createServer } from 'http'
 import { handleMessage } from './bot.js'
 import { iniciarCronJobs } from './cron/jobs.js'
-import { getGruposActivos, getPendientes, marcarHecho } from './database/db.js'
+import { getGruposActivos, getPendientes, marcarHecho, getAllGrupos, setGrupoActivo } from './database/db.js'
 
 const AUTH_DIR = './auth/session'
 mkdirSync(AUTH_DIR, { recursive: true })
@@ -27,30 +27,33 @@ const PORT = process.env.PORT || 3000
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || ''
 
 function renderAdminPanel(res) {
-  const grupos = getGruposActivos()
+  const todosGrupos = getAllGrupos()
+  const gruposActivos = todosGrupos.filter(g => g.activo)
   const ahora = new Date().toLocaleString('es-ES', { timeZone: 'Europe/Madrid' })
+  const adminPath = `/admin${ADMIN_TOKEN ? '?token=' + ADMIN_TOKEN : ''}`
 
+  // ── Sección tareas pendientes (solo grupos activos) ───────
   let contenidoGrupos = ''
   let totalPendientes = 0
 
-  for (const grupo of grupos) {
+  for (const grupo of gruposActivos) {
     const tareas = getPendientes(grupo.group_id)
     totalPendientes += tareas.length
-    const groupIdEncoded = encodeURIComponent(grupo.group_id)
 
     let filasTabla = ''
     if (tareas.length === 0) {
-      filasTabla = `<tr><td colspan="3" style="text-align:center;color:#6b7280;font-style:italic;">Sin tareas pendientes ✅</td></tr>`
+      filasTabla = `<tr><td colspan="4" style="text-align:center;color:#6b7280;font-style:italic;">Sin tareas pendientes ✅</td></tr>`
     } else {
       filasTabla = tareas.map((t, i) => `
         <tr>
           <td style="width:2rem;color:#9ca3af">${i + 1}</td>
           <td>${escapeHtml(t.descripcion)}</td>
-          <td style="width:8rem;color:#9ca3af;font-size:.8rem">${t.created_at}</td>
+          <td style="width:9rem;color:#9ca3af;font-size:.8rem">${t.created_at}</td>
           <td style="width:5rem">
             <form method="POST" action="/admin/hecho">
               <input type="hidden" name="groupId" value="${escapeHtml(grupo.group_id)}">
               <input type="hidden" name="tareaId" value="${t.id}">
+              <input type="hidden" name="_redirect" value="${adminPath}">
               <button type="submit" class="btn-hecho">✓ Hecho</button>
             </form>
           </td>
@@ -69,8 +72,40 @@ function renderAdminPanel(res) {
       </div>`
   }
 
-  if (grupos.length === 0) {
-    contenidoGrupos = `<p style="text-align:center;color:#6b7280">Aún no hay grupos registrados. El bot los registra automáticamente cuando recibe el primer mensaje.</p>`
+  if (gruposActivos.length === 0) {
+    contenidoGrupos = `<p style="text-align:center;color:#6b7280;padding:2rem 0">No hay grupos activos. Actívalos en la sección de gestión de grupos.</p>`
+  }
+
+  // ── Sección gestión de grupos (todos) ────────────────────
+  let tarjetasGrupos = ''
+  for (const grupo of todosGrupos) {
+    const pendientes = grupo.activo ? getPendientes(grupo.group_id).length : 0
+    const cls = grupo.activo ? 'activo' : 'inactivo'
+    const checked = grupo.activo ? 'checked' : ''
+    const idCorto = grupo.group_id.length > 24
+      ? grupo.group_id.substring(0, 12) + '…' + grupo.group_id.slice(-8)
+      : grupo.group_id
+
+    tarjetasGrupos += `
+      <div class="grupo-card ${cls}">
+        <div class="grupo-info">
+          <div class="grupo-nombre">${escapeHtml(grupo.nombre || grupo.group_id)}</div>
+          <div class="grupo-id">${escapeHtml(idCorto)}</div>
+          ${grupo.activo ? `<div class="grupo-pendientes">${pendientes} tarea${pendientes !== 1 ? 's' : ''} pendiente${pendientes !== 1 ? 's' : ''}</div>` : '<div class="grupo-pendientes" style="color:#ef4444">Inactivo — el bot no responde</div>'}
+        </div>
+        <form method="POST" action="/admin/grupos/toggle" style="flex-shrink:0">
+          <input type="hidden" name="groupId" value="${escapeHtml(grupo.group_id)}">
+          <input type="hidden" name="activo" value="${grupo.activo ? '0' : '1'}">
+          <label class="toggle" title="${grupo.activo ? 'Desactivar grupo' : 'Activar grupo'}">
+            <input type="checkbox" ${checked} onchange="this.form.submit()">
+            <span class="slider"></span>
+          </label>
+        </form>
+      </div>`
+  }
+
+  if (todosGrupos.length === 0) {
+    tarjetasGrupos = `<p style="color:#6b7280">Aún no hay grupos registrados. El bot los detecta automáticamente al recibir el primer mensaje de cada grupo.</p>`
   }
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8')
@@ -99,6 +134,22 @@ function renderAdminPanel(res) {
     tr:last-child td{border-bottom:none}
     .btn-hecho{background:#166534;color:#86efac;border:none;padding:.35rem .75rem;border-radius:6px;cursor:pointer;font-size:.8rem;font-weight:600;white-space:nowrap}
     .btn-hecho:hover{background:#15803d}
+    .seccion-titulo{font-size:1rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.08em;margin:2rem 0 1rem}
+    .grupos-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:.75rem;margin-bottom:1.5rem}
+    .grupo-card{background:#1e293b;border-radius:10px;padding:1rem 1.25rem;display:flex;align-items:center;justify-content:space-between;gap:1rem;border:2px solid transparent}
+    .grupo-card.activo{border-color:#166534}
+    .grupo-card.inactivo{opacity:.6}
+    .grupo-info{min-width:0}
+    .grupo-nombre{font-weight:600;font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .grupo-id{font-size:.7rem;color:#475569;margin-top:.15rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .grupo-pendientes{font-size:.75rem;color:#94a3b8;margin-top:.2rem}
+    .toggle{position:relative;display:inline-block;width:46px;height:26px;flex-shrink:0}
+    .toggle input{opacity:0;width:0;height:0}
+    .slider{position:absolute;inset:0;background:#374151;border-radius:999px;cursor:pointer;transition:.2s}
+    .slider:before{content:"";position:absolute;height:18px;width:18px;left:4px;bottom:4px;background:#fff;border-radius:50%;transition:.2s}
+    input:checked+.slider{background:#16a34a}
+    input:checked+.slider:before{transform:translateX(20px)}
+    .grupos-hint{font-size:.8rem;color:#475569;margin-top:.5rem}
     .refresh{font-size:.8rem;color:#64748b;text-align:right;margin-top:1.5rem}
     a{color:#94a3b8;text-decoration:none}a:hover{color:#e2e8f0}
   </style>
@@ -118,14 +169,23 @@ function renderAdminPanel(res) {
       <div class="stat-label">Tareas pendientes</div>
     </div>
     <div class="stat">
-      <div class="stat-num">${grupos.length}</div>
+      <div class="stat-num">${gruposActivos.length}</div>
       <div class="stat-label">Grupos activos</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num">${todosGrupos.length}</div>
+      <div class="stat-label">Grupos detectados</div>
     </div>
   </div>
 
+  <div class="seccion-titulo">Gestión de grupos</div>
+  <div class="grupos-grid">${tarjetasGrupos}</div>
+  <p class="grupos-hint">Los grupos aparecen aquí automáticamente cuando el bot recibe su primer mensaje. Usa el toggle para activar o desactivar cada uno.</p>
+
+  <div class="seccion-titulo">Tareas pendientes</div>
   ${contenidoGrupos}
 
-  <div class="refresh"><a href="/admin${ADMIN_TOKEN ? '?token=' + ADMIN_TOKEN : ''}">↻ Refrescar</a></div>
+  <div class="refresh"><a href="${adminPath}">↻ Refrescar</a></div>
 </body>
 </html>`)
 }
@@ -180,6 +240,25 @@ const server = createServer(async (req, res) => {
     const { groupId, tareaId } = body
     if (groupId && tareaId) {
       marcarHecho(groupId, parseInt(tareaId))
+    }
+    const redirect = `/admin${ADMIN_TOKEN ? '?token=' + ADMIN_TOKEN : ''}`
+    res.writeHead(302, { Location: redirect })
+    res.end()
+    return
+  }
+
+  // ── TOGGLE GRUPO ACTIVO/INACTIVO ─────────────────────────
+  if (urlPath === '/admin/grupos/toggle' && req.method === 'POST') {
+    if (!isAdminAuthorized(req)) {
+      res.writeHead(401, { 'Content-Type': 'text/plain; charset=utf-8' })
+      res.end('No autorizado.')
+      return
+    }
+    const body = await parseBody(req)
+    const { groupId, activo } = body
+    if (groupId) {
+      setGrupoActivo(groupId, activo === '1')
+      console.log(`[ADMIN] Grupo ${groupId} → activo: ${activo}`)
     }
     const redirect = `/admin${ADMIN_TOKEN ? '?token=' + ADMIN_TOKEN : ''}`
     res.writeHead(302, { Location: redirect })

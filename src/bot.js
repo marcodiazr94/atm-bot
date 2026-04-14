@@ -35,19 +35,23 @@ export async function handleMessage(sock, msg) {
     console.log(`[MSG] Grupo: ${groupId} | De: ${senderNumero} | Texto: ${texto.substring(0, 50)}`)
 
     // Registrar el grupo automáticamente si es nuevo, usando el nombre real del grupo
-    if (!getGrupo(groupId)) {
+    let grupoConfig = getGrupo(groupId)
+    if (!grupoConfig) {
       try {
         const metadata = await sock.groupMetadata(groupId)
         registrarGrupo(groupId, metadata.subject || groupId)
       } catch {
         registrarGrupo(groupId, groupId)
       }
+      grupoConfig = getGrupo(groupId)
     }
 
     // ── WHITELIST ────────────────────────────────────────────
-    // Si hay grupos configurados, solo actuar en ellos
-    // Si la lista está vacía, actuar en todos (modo desarrollo)
-    if (GRUPOS_AUTORIZADOS.length > 0 && !GRUPOS_AUTORIZADOS.includes(groupId)) {
+    // Si hay env var GRUPOS_AUTORIZADOS, tiene prioridad (compatibilidad).
+    // Si no, se usa el flag `activo` de la BD (gestionable desde el panel web).
+    if (GRUPOS_AUTORIZADOS.length > 0) {
+      if (!GRUPOS_AUTORIZADOS.includes(groupId)) return
+    } else if (grupoConfig && !grupoConfig.activo) {
       return
     }
 
