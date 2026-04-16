@@ -16,6 +16,13 @@ function getMadridHHMM() {
   return `${pad(now.getHours())}:${pad(now.getMinutes())}`
 }
 
+// Formatea un Date (con hora en Madrid) como 'YYYY-MM-DD HH:MM:SS'
+// para comparar con fire_at almacenado en el mismo formato
+function formatMadridStr(date) {
+  const pad = n => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+}
+
 const DIAS_ALERTA = parseInt(process.env.DIAS_ALERTA_OLVIDADA) || 3
 
 async function enviarResumenDiario(sock, grupo) {
@@ -70,7 +77,9 @@ export function iniciarCronJobs(getSock) {
       }
 
       // 2. Lanzar recordatorios pendientes
-      const recordatorios = getRecordatoriosPendientes()
+      // Pasamos la hora Madrid como string para evitar depender del timezone del servidor
+      const ahoraMadrid = formatMadridStr(getMadridNow())
+      const recordatorios = getRecordatoriosPendientes(ahoraMadrid)
       for (const rec of recordatorios) {
         try {
           await sock.sendMessage(rec.group_id, {

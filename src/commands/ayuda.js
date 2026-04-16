@@ -31,8 +31,11 @@ export async function cmdAyuda(sock, groupId) {
 !recordar en 30m [mensaje]
 !recordar en 2h [mensaje]
 !recordar en 1d [mensaje]
+!recordar [mensaje] en 20 minutos
+!recordar [mensaje] dentro de 2 horas
 !recordar a las 17:00 [mensaje]
-  → Programa un aviso al grupo en el tiempo indicado
+!recordar [mensaje] a las 17:00
+  → Programa un aviso al grupo. El tiempo puede ir antes o después del mensaje
 
 ━━━━━━━━━━━━━━━━━━━━
 📢 *AVISOS*

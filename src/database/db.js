@@ -124,12 +124,14 @@ export function añadirRecordatorio(groupId, texto, fireAt, creadoPor) {
   return stmt.run(groupId, texto, fireAt, creadoPor)
 }
 
-export function getRecordatoriosPendientes() {
+// ahoraStr: fecha en formato 'YYYY-MM-DD HH:MM:SS' en hora Madrid
+// Se pasa desde el cron para evitar depender del timezone del servidor
+export function getRecordatoriosPendientes(ahoraStr) {
   return db.prepare(`
     SELECT * FROM recordatorios
     WHERE disparado = 0
-      AND fire_at <= datetime('now', 'localtime')
-  `).all()
+      AND fire_at <= ?
+  `).all(ahoraStr)
 }
 
 export function marcarRecordatorioDisparado(id) {
