@@ -3,36 +3,64 @@ export async function cmdAyuda(sock, groupId) {
     text: `🤖 *ATM Bot — Comandos disponibles*
 
 📋 *Gestión de tareas:*
-!pendientes — Ver todas las tareas pendientes
+!pendientes — Ver tareas pendientes (⚠️ = más de 3 días sin completar)
 
 !añadir [tarea] — Añadir una tarea
-  _Ejemplo: !añadir Llamar al proveedor_
+  Ejemplo: !añadir Llamar al proveedor
 
-!añadir - tarea1 - tarea2 - tarea3 — Añadir varias tareas a la vez
-  _Ejemplo: !añadir - Limpiar freidoras - Reponer salsas - Llamar proveedor_
+!añadir [tarea] @Nombre — Asignar tarea a una persona
+  Ejemplo: !añadir Revisar pedido @Marco
 
-!hecho [número] — Marcar una tarea como completada
-  _Ejemplo: !hecho 2_
+!añadir - tarea1 - tarea2 - tarea3 — Añadir varias a la vez
+  Ejemplo: !añadir - Limpiar freidoras - Reponer salsas
 
-!hecho [n1] [n2] ... — Marcar varias tareas a la vez
-  _Ejemplo: !hecho 1 3 5_
+!hecho [n] o !hecho [n1] [n2]... — Marcar como hecha(s)
+  Ejemplo: !hecho 2 o !hecho 1 3 5
+
+!borrar [n] o !borrar [n1] [n2]... — Borrar tarea(s) de la lista
+  Ejemplo: !borrar 3
+
+!mis-tareas [Nombre] — Ver tareas asignadas a una persona
+  Ejemplo: !mis-tareas Marco
+
+!historial — Tareas completadas en los últimos 7 días
+!historial [días] — Ejemplo: !historial 14
+
+⏰ *Recordatorios:*
+!recordar en [tiempo] [mensaje] — Recordatorio en X tiempo
+  Ejemplo: !recordar en 2h Sacar la masa del congelador
+  Ejemplo: !recordar en 30m Llamar al proveedor
+
+!recordar a las [HH:MM] [mensaje] — Recordatorio a una hora
+  Ejemplo: !recordar a las 17:00 Reunión del equipo
+
+📢 *Avisos:*
+!avisar [mensaje] — Enviar aviso a todos los grupos activos
+  Ejemplo: !avisar Mañana cerramos a las 22:00
 
 🧠 *Inteligencia artificial:*
-!resumen — Resumen de las últimas 24 horas
-!resumen [horas] — Resumen de las últimas N horas
-  _Ejemplo: !resumen 8_
+!resumen — Resumen IA de las últimas 24h
+!resumen [horas] — Ejemplo: !resumen 8
+
+!buscar [tema] — Busca en toda la conversación guardada del grupo
+  La IA encuentra todos los momentos en que se habló sobre ese tema,
+  con fecha, quién lo dijo y extractos literales de lo dicho.
+  Ejemplo: !buscar cuándo se habló del cambio de carta
+  Ejemplo: !buscar decisiones sobre el proveedor de pan
 
 🌐 *Panel de administración web:*
-https://atm-bot-production.up.railway.app/
-https://atm-bot-production.up.railway.app/admin
+atm-bot-production.up.railway.app
+atm-bot-production.up.railway.app/admin
 
-Accede desde el navegador para gestionar el bot visualmente:
-  • Ver y completar tareas pendientes de todos los grupos
-  • Activar o desactivar grupos con un toggle — si desactivas un grupo el bot deja de responder en él
-  • Los grupos aparecen automáticamente en el panel en cuanto el bot recibe su primer mensaje
+Gestiona el bot desde el navegador:
+  • Ver y completar tareas de todos los grupos
+  • Añadir tareas directamente desde la web
+  • Ver historial de tareas completadas
+  • Activar/desactivar grupos con un toggle
+  • Configurar la hora del recordatorio diario por grupo
+  • Los grupos se detectan solos al recibir el primer mensaje
 
-❓ *Otros:*
-!ayuda — Mostrar este mensaje
+❓ !ayuda — Mostrar este mensaje
 
 _Bot desarrollado para ATM Burgers 🍔_`
   })

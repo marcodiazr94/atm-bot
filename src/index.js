@@ -11,7 +11,17 @@ import { mkdirSync } from 'fs'
 import { createServer } from 'http'
 import { handleMessage } from './bot.js'
 import { iniciarCronJobs } from './cron/jobs.js'
-import { getGruposActivos, getPendientes, marcarHecho, getAllGrupos, setGrupoActivo } from './database/db.js'
+import {
+  getGruposActivos,
+  getPendientes,
+  marcarHecho,
+  getAllGrupos,
+  setGrupoActivo,
+  getHistorial,
+  borrarTarea,
+  setHoraResumen,
+  añadirTarea
+} from './database/db.js'
 
 const AUTH_DIR = './auth/session'
 mkdirSync(AUTH_DIR, { recursive: true })
@@ -25,6 +35,7 @@ let currentSock = null
 
 const PORT = process.env.PORT || 3000
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || ''
+const DIAS_ALERTA = parseInt(process.env.DIAS_ALERTA_OLVIDADA) || 3
 
 function renderAdminPanel(res) {
   const todosGrupos = getAllGrupos()
@@ -39,15 +50,23 @@ function renderAdminPanel(res) {
   for (const grupo of gruposActivos) {
     const tareas = getPendientes(grupo.group_id)
     totalPendientes += tareas.length
+    const ahoraDate = new Date()
 
     let filasTabla = ''
     if (tareas.length === 0) {
-      filasTabla = `<tr><td colspan="4" style="text-align:center;color:#6b7280;font-style:italic;">Sin tareas pendientes ✅</td></tr>`
+      filasTabla = `<tr><td colspan="5" style="text-align:center;color:#6b7280;font-style:italic;">Sin tareas pendientes ✅</td></tr>`
     } else {
-      filasTabla = tareas.map((t, i) => `
-        <tr>
+      filasTabla = tareas.map((t, i) => {
+        const creadoEn = new Date(t.created_at)
+        const diasPendiente = Math.floor((ahoraDate - creadoEn) / (1000 * 60 * 60 * 24))
+        const esOlvidada = diasPendiente >= DIAS_ALERTA
+        const rowStyle = esOlvidada ? ' style="background:#450a0a"' : ''
+        const prefijo = esOlvidada ? '⚠️ ' : ''
+        const asignado = t.asignado_a ? `<br><span style="font-size:.75rem;color:#94a3b8">${escapeHtml(t.asignado_a)}</span>` : ''
+        return `
+        <tr${rowStyle}>
           <td style="width:2rem;color:#9ca3af">${i + 1}</td>
-          <td>${escapeHtml(t.descripcion)}</td>
+          <td>${prefijo}${escapeHtml(t.descripcion)}${asignado}</td>
           <td style="width:9rem;color:#9ca3af;font-size:.8rem">${t.created_at}</td>
           <td style="width:5rem">
             <form method="POST" action="/admin/hecho">
@@ -57,7 +76,15 @@ function renderAdminPanel(res) {
               <button type="submit" class="btn-hecho">✓ Hecho</button>
             </form>
           </td>
-        </tr>`).join('')
+          <td style="width:5rem">
+            <form method="POST" action="/admin/tareas/borrar">
+              <input type="hidden" name="groupId" value="${escapeHtml(grupo.group_id)}">
+              <input type="hidden" name="tareaId" value="${t.id}">
+              <button type="submit" class="btn-borrar">🗑️</button>
+            </form>
+          </td>
+        </tr>`
+      }).join('')
     }
 
     contenidoGrupos += `
@@ -65,8 +92,14 @@ function renderAdminPanel(res) {
         <h2>${escapeHtml(grupo.nombre || grupo.group_id)}
           <span class="badge">${tareas.length} pendiente${tareas.length !== 1 ? 's' : ''}</span>
         </h2>
+        <form method="POST" action="/admin/tareas/nueva" class="form-nueva-tarea">
+          <input type="hidden" name="groupId" value="${escapeHtml(grupo.group_id)}">
+          <input type="text" name="descripcion" placeholder="Nueva tarea..." required class="input-tarea">
+          <input type="text" name="asignadoA" placeholder="Asignar a (opcional)" class="input-asignado">
+          <button type="submit" class="btn-añadir">+ Añadir</button>
+        </form>
         <table>
-          <thead><tr><th>#</th><th>Tarea</th><th>Creada</th><th></th></tr></thead>
+          <thead><tr><th>#</th><th>Tarea</th><th>Creada</th><th></th><th></th></tr></thead>
           <tbody>${filasTabla}</tbody>
         </table>
       </div>`
@@ -74,6 +107,38 @@ function renderAdminPanel(res) {
 
   if (gruposActivos.length === 0) {
     contenidoGrupos = `<p style="text-align:center;color:#6b7280;padding:2rem 0">No hay grupos activos. Actívalos en la sección de gestión de grupos.</p>`
+  }
+
+  // ── Sección historial (últimos 7 días) ────────────────────
+  let contenidoHistorial = ''
+  for (const grupo of gruposActivos) {
+    const historial = getHistorial(grupo.group_id, 7).slice(0, 10)
+    if (historial.length === 0) continue
+
+    const filas = historial.map(t => {
+      const fecha = t.done_at ? t.done_at.substring(0, 10) : '??'
+      const asignado = t.asignado_a ? ` <span style="color:#94a3b8;font-size:.8rem">(${escapeHtml(t.asignado_a)})</span>` : ''
+      return `<tr>
+        <td>✓</td>
+        <td>${escapeHtml(t.descripcion)}${asignado}</td>
+        <td style="color:#9ca3af;font-size:.8rem">${fecha}</td>
+      </tr>`
+    }).join('')
+
+    contenidoHistorial += `
+      <div class="grupo">
+        <h2>${escapeHtml(grupo.nombre || grupo.group_id)}
+          <span class="badge">${historial.length} completada${historial.length !== 1 ? 's' : ''}</span>
+        </h2>
+        <table>
+          <thead><tr><th></th><th>Tarea</th><th>Completada</th></tr></thead>
+          <tbody>${filas}</tbody>
+        </table>
+      </div>`
+  }
+
+  if (!contenidoHistorial) {
+    contenidoHistorial = `<p style="text-align:center;color:#6b7280;padding:2rem 0">No hay tareas completadas en los últimos 7 días.</p>`
   }
 
   // ── Sección gestión de grupos (todos) ────────────────────
@@ -85,6 +150,7 @@ function renderAdminPanel(res) {
     const idCorto = grupo.group_id.length > 24
       ? grupo.group_id.substring(0, 12) + '…' + grupo.group_id.slice(-8)
       : grupo.group_id
+    const horaActual = grupo.hora_resumen || '09:00'
 
     tarjetasGrupos += `
       <div class="grupo-card ${cls}">
@@ -92,6 +158,11 @@ function renderAdminPanel(res) {
           <div class="grupo-nombre">${escapeHtml(grupo.nombre || grupo.group_id)}</div>
           <div class="grupo-id">${escapeHtml(idCorto)}</div>
           ${grupo.activo ? `<div class="grupo-pendientes">${pendientes} tarea${pendientes !== 1 ? 's' : ''} pendiente${pendientes !== 1 ? 's' : ''}</div>` : '<div class="grupo-pendientes" style="color:#ef4444">Inactivo — el bot no responde</div>'}
+          <form method="POST" action="/admin/grupos/hora" class="form-hora">
+            <input type="hidden" name="groupId" value="${escapeHtml(grupo.group_id)}">
+            <input type="time" name="hora" value="${escapeHtml(horaActual)}" class="input-hora">
+            <button type="submit" class="btn-hora">💾</button>
+          </form>
         </div>
         <form method="POST" action="/admin/grupos/toggle" style="flex-shrink:0">
           <input type="hidden" name="groupId" value="${escapeHtml(grupo.group_id)}">
@@ -134,16 +205,28 @@ function renderAdminPanel(res) {
     tr:last-child td{border-bottom:none}
     .btn-hecho{background:#166534;color:#86efac;border:none;padding:.35rem .75rem;border-radius:6px;cursor:pointer;font-size:.8rem;font-weight:600;white-space:nowrap}
     .btn-hecho:hover{background:#15803d}
+    .btn-borrar{background:#7f1d1d;color:#fca5a5;border:none;padding:.35rem .6rem;border-radius:6px;cursor:pointer;font-size:.8rem;white-space:nowrap}
+    .btn-borrar:hover{background:#991b1b}
+    .btn-añadir{background:#1d4ed8;color:#bfdbfe;border:none;padding:.4rem .85rem;border-radius:6px;cursor:pointer;font-size:.85rem;font-weight:600;white-space:nowrap}
+    .btn-añadir:hover{background:#1e40af}
+    .form-nueva-tarea{display:flex;gap:.5rem;margin-bottom:1rem;flex-wrap:wrap}
+    .input-tarea{flex:2;min-width:160px;background:#0f172a;border:1px solid #334155;color:#e2e8f0;padding:.4rem .75rem;border-radius:6px;font-size:.85rem}
+    .input-asignado{flex:1;min-width:120px;background:#0f172a;border:1px solid #334155;color:#e2e8f0;padding:.4rem .75rem;border-radius:6px;font-size:.85rem}
+    .input-tarea:focus,.input-asignado:focus{outline:none;border-color:#3b82f6}
     .seccion-titulo{font-size:1rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.08em;margin:2rem 0 1rem}
     .grupos-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:.75rem;margin-bottom:1.5rem}
-    .grupo-card{background:#1e293b;border-radius:10px;padding:1rem 1.25rem;display:flex;align-items:center;justify-content:space-between;gap:1rem;border:2px solid transparent}
+    .grupo-card{background:#1e293b;border-radius:10px;padding:1rem 1.25rem;display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;border:2px solid transparent}
     .grupo-card.activo{border-color:#166534}
     .grupo-card.inactivo{opacity:.6}
-    .grupo-info{min-width:0}
+    .grupo-info{min-width:0;flex:1}
     .grupo-nombre{font-weight:600;font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .grupo-id{font-size:.7rem;color:#475569;margin-top:.15rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .grupo-pendientes{font-size:.75rem;color:#94a3b8;margin-top:.2rem}
-    .toggle{position:relative;display:inline-block;width:46px;height:26px;flex-shrink:0}
+    .form-hora{display:flex;align-items:center;gap:.3rem;margin-top:.5rem}
+    .input-hora{background:#0f172a;border:1px solid #334155;color:#e2e8f0;padding:.25rem .5rem;border-radius:5px;font-size:.8rem}
+    .btn-hora{background:#374151;color:#d1d5db;border:none;padding:.25rem .5rem;border-radius:5px;cursor:pointer;font-size:.8rem}
+    .btn-hora:hover{background:#4b5563}
+    .toggle{position:relative;display:inline-block;width:46px;height:26px;flex-shrink:0;margin-top:.25rem}
     .toggle input{opacity:0;width:0;height:0}
     .slider{position:absolute;inset:0;background:#374151;border-radius:999px;cursor:pointer;transition:.2s}
     .slider:before{content:"";position:absolute;height:18px;width:18px;left:4px;bottom:4px;background:#fff;border-radius:50%;transition:.2s}
@@ -180,10 +263,13 @@ function renderAdminPanel(res) {
 
   <div class="seccion-titulo">Gestión de grupos</div>
   <div class="grupos-grid">${tarjetasGrupos}</div>
-  <p class="grupos-hint">Los grupos aparecen aquí automáticamente cuando el bot recibe su primer mensaje. Usa el toggle para activar o desactivar cada uno.</p>
+  <p class="grupos-hint">Los grupos aparecen aquí automáticamente cuando el bot recibe su primer mensaje. Usa el toggle para activar o desactivar cada uno. Los nuevos grupos se registran inactivos por defecto.</p>
 
   <div class="seccion-titulo">Tareas pendientes</div>
   ${contenidoGrupos}
+
+  <div class="seccion-titulo">Historial (últimos 7 días)</div>
+  ${contenidoHistorial}
 
   <div class="refresh"><a href="${adminPath}">↻ Refrescar</a></div>
 </body>
@@ -217,6 +303,7 @@ function isAdminAuthorized(req) {
 
 const server = createServer(async (req, res) => {
   const urlPath = req.url.split('?')[0]
+  const redirect = `/admin${ADMIN_TOKEN ? '?token=' + ADMIN_TOKEN : ''}`
 
   // ── PANEL ADMIN ──────────────────────────────────────────
   if (urlPath === '/admin') {
@@ -241,7 +328,41 @@ const server = createServer(async (req, res) => {
     if (groupId && tareaId) {
       marcarHecho(groupId, parseInt(tareaId))
     }
-    const redirect = `/admin${ADMIN_TOKEN ? '?token=' + ADMIN_TOKEN : ''}`
+    res.writeHead(302, { Location: redirect })
+    res.end()
+    return
+  }
+
+  // ── BORRAR TAREA DESDE PANEL ─────────────────────────────
+  if (urlPath === '/admin/tareas/borrar' && req.method === 'POST') {
+    if (!isAdminAuthorized(req)) {
+      res.writeHead(401, { 'Content-Type': 'text/plain; charset=utf-8' })
+      res.end('No autorizado.')
+      return
+    }
+    const body = await parseBody(req)
+    const { groupId, tareaId } = body
+    if (groupId && tareaId) {
+      borrarTarea(groupId, parseInt(tareaId))
+    }
+    res.writeHead(302, { Location: redirect })
+    res.end()
+    return
+  }
+
+  // ── NUEVA TAREA DESDE PANEL ──────────────────────────────
+  if (urlPath === '/admin/tareas/nueva' && req.method === 'POST') {
+    if (!isAdminAuthorized(req)) {
+      res.writeHead(401, { 'Content-Type': 'text/plain; charset=utf-8' })
+      res.end('No autorizado.')
+      return
+    }
+    const body = await parseBody(req)
+    const { groupId, descripcion, asignadoA } = body
+    if (groupId && descripcion && descripcion.trim()) {
+      añadirTarea(groupId, descripcion.trim(), 'web', asignadoA?.trim() || null)
+      console.log(`[ADMIN] Nueva tarea añadida al grupo ${groupId}: ${descripcion.trim()}`)
+    }
     res.writeHead(302, { Location: redirect })
     res.end()
     return
@@ -260,7 +381,24 @@ const server = createServer(async (req, res) => {
       setGrupoActivo(groupId, activo === '1')
       console.log(`[ADMIN] Grupo ${groupId} → activo: ${activo}`)
     }
-    const redirect = `/admin${ADMIN_TOKEN ? '?token=' + ADMIN_TOKEN : ''}`
+    res.writeHead(302, { Location: redirect })
+    res.end()
+    return
+  }
+
+  // ── CAMBIAR HORA RESUMEN ──────────────────────────────────
+  if (urlPath === '/admin/grupos/hora' && req.method === 'POST') {
+    if (!isAdminAuthorized(req)) {
+      res.writeHead(401, { 'Content-Type': 'text/plain; charset=utf-8' })
+      res.end('No autorizado.')
+      return
+    }
+    const body = await parseBody(req)
+    const { groupId, hora } = body
+    if (groupId && hora) {
+      setHoraResumen(groupId, hora)
+      console.log(`[ADMIN] Hora resumen de ${groupId} → ${hora}`)
+    }
     res.writeHead(302, { Location: redirect })
     res.end()
     return

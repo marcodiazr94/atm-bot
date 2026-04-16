@@ -29,6 +29,41 @@ export async function callClaude(prompt) {
   return data.choices[0].message.content
 }
 
+export async function buscarEnConversacion(mensajes, query, nombreGrupo) {
+  if (mensajes.length === 0) {
+    return 'No hay mensajes registrados en este grupo para buscar.'
+  }
+
+  const conversacion = mensajes
+    .map(m => `[${m.timestamp}] ${m.nombre || 'Desconocido'}: ${m.texto}`)
+    .join('\n')
+
+  const prompt = `
+Eres el asistente de búsqueda de ATM Burgers, una cadena de hamburguesas de Asturias (España).
+
+Tienes el historial completo de conversación del grupo "${nombreGrupo}" (${mensajes.length} mensajes).
+El usuario quiere encontrar cuándo y cómo se habló sobre el siguiente tema:
+
+BÚSQUEDA: "${query}"
+
+Analiza toda la conversación e identifica TODOS los momentos en que se habló sobre ese tema.
+Para cada resultado relevante encontrado, indica:
+- 📅 La fecha y hora aproximada
+- 👤 Quién lo mencionó
+- 💬 Un extracto literal o muy fiel de lo que se dijo
+- 📝 Un breve resumen del contexto si hace falta
+
+Si hay varios momentos distintos, enuméralos por orden cronológico.
+Si el tema no aparece en la conversación, responde claramente que no se encontró nada.
+No inventes información que no esté en los mensajes.
+
+HISTORIAL DE CONVERSACIÓN:
+${conversacion}
+`
+
+  return await callClaude(prompt)
+}
+
 export async function resumirConversacion(mensajes, nombreGrupo, horas) {
   if (mensajes.length === 0) {
     return `No hay mensajes registrados en las últimas ${horas} horas.`

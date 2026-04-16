@@ -4,6 +4,12 @@ import { cmdAñadir } from './commands/anadir.js'
 import { cmdHecho } from './commands/hecho.js'
 import { cmdResumen } from './commands/resumen.js'
 import { cmdAyuda } from './commands/ayuda.js'
+import { cmdBorrar } from './commands/borrar.js'
+import { cmdHistorial } from './commands/historial.js'
+import { cmdRecordar } from './commands/recordar.js'
+import { cmdMisTareas } from './commands/mistareas.js'
+import { cmdAvisar } from './commands/avisar.js'
+import { cmdBuscar } from './commands/buscar.js'
 
 // IDs de los grupos de WhatsApp autorizados
 // Formato: XXXXXXXXXXX@g.us
@@ -79,6 +85,36 @@ export async function handleMessage(sock, msg) {
       case 'hecho':
       case 'done':
         await cmdHecho(sock, groupId, args)
+        break
+
+      case 'borrar':
+      case 'delete':
+        await cmdBorrar(sock, groupId, args)
+        break
+
+      case 'historial':
+      case 'history':
+        await cmdHistorial(sock, groupId, args)
+        break
+
+      case 'recordar':
+      case 'remind':
+        await cmdRecordar(sock, groupId, senderNumero, args)
+        break
+
+      case 'mis-tareas':
+      case 'mytasks':
+        await cmdMisTareas(sock, groupId, args)
+        break
+
+      case 'avisar':
+      case 'broadcast':
+        await cmdAvisar(sock, groupId, sender, args)
+        break
+
+      case 'buscar':
+      case 'search':
+        await cmdBuscar(sock, groupId, grupoConfig?.nombre || groupId, args)
         break
 
       case 'resumen':

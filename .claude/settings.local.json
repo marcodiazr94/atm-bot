@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir \"C:\\\\Users\\\\marco\\\\OneDrive - España A toda mesa SL\\\\atm-bot\\\\atm-bot\\\\src\\\\commands\")",
+      "Bash(grep -E \"\\\\.js$\")",
+      "Bash(dir \"C:\\\\Users\\\\marco\\\\OneDrive - España A toda mesa SL\\\\atm-bot\\\\atm-bot\\\\src\")"
+    ]
+  }
+}
