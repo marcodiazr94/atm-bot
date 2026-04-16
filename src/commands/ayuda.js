@@ -1,67 +1,69 @@
 export async function cmdAyuda(sock, groupId) {
   await sock.sendMessage(groupId, {
-    text: `🤖 *ATM Bot — Comandos disponibles*
+    text: `🤖 *ATM Bot — Comandos*
 
-📋 *Gestión de tareas:*
-!pendientes — Ver tareas pendientes (⚠️ = más de 3 días sin completar)
+━━━━━━━━━━━━━━━━━━━━
+📋 *TAREAS*
+━━━━━━━━━━━━━━━━━━━━
+!pendientes
+  → Lista todas las tareas (⚠️ = +3 días sin completar)
 
-!añadir [tarea] — Añadir una tarea
-  Ejemplo: !añadir Llamar al proveedor
+!añadir [tarea]
+!añadir [tarea] @Nombre
+!añadir - tarea1 - tarea2 - tarea3
+  → Añade una o varias tareas, con asignación opcional
 
-!añadir [tarea] @Nombre — Asignar tarea a una persona
-  Ejemplo: !añadir Revisar pedido @Marco
+!hecho 2 · !hecho 1 3 5
+  → Marca una o varias tareas como completadas
 
-!añadir - tarea1 - tarea2 - tarea3 — Añadir varias a la vez
-  Ejemplo: !añadir - Limpiar freidoras - Reponer salsas
+!borrar 2 · !borrar 1 3 5
+  → Elimina una o varias tareas de la lista
 
-!hecho [n] o !hecho [n1] [n2]... — Marcar como hecha(s)
-  Ejemplo: !hecho 2 o !hecho 1 3 5
+!mis-tareas Marco
+  → Tareas pendientes asignadas a una persona
 
-!borrar [n] o !borrar [n1] [n2]... — Borrar tarea(s) de la lista
-  Ejemplo: !borrar 3
+!historial · !historial 14
+  → Tareas completadas (últimos 7 días por defecto, máx 30)
 
-!mis-tareas [Nombre] — Ver tareas asignadas a una persona
-  Ejemplo: !mis-tareas Marco
+━━━━━━━━━━━━━━━━━━━━
+⏰ *RECORDATORIOS*
+━━━━━━━━━━━━━━━━━━━━
+!recordar en 30m [mensaje]
+!recordar en 2h [mensaje]
+!recordar en 1d [mensaje]
+!recordar a las 17:00 [mensaje]
+  → Programa un aviso al grupo en el tiempo indicado
 
-!historial — Tareas completadas en los últimos 7 días
-!historial [días] — Ejemplo: !historial 14
+━━━━━━━━━━━━━━━━━━━━
+📢 *AVISOS*
+━━━━━━━━━━━━━━━━━━━━
+!avisar [mensaje]
+  → Envía el mensaje a todos los grupos activos
 
-⏰ *Recordatorios:*
-!recordar en [tiempo] [mensaje] — Recordatorio en X tiempo
-  Ejemplo: !recordar en 2h Sacar la masa del congelador
-  Ejemplo: !recordar en 30m Llamar al proveedor
+━━━━━━━━━━━━━━━━━━━━
+🧠 *INTELIGENCIA ARTIFICIAL*
+━━━━━━━━━━━━━━━━━━━━
+!resumen · !resumen 8
+  → Resumen IA de la conversación (24h por defecto)
 
-!recordar a las [HH:MM] [mensaje] — Recordatorio a una hora
-  Ejemplo: !recordar a las 17:00 Reunión del equipo
+!buscar [tema]
+  → Busca en todo el historial guardado del grupo.
+  La IA localiza cuándo se habló del tema, quién lo dijo
+  y muestra extractos literales ordenados por fecha.
 
-📢 *Avisos:*
-!avisar [mensaje] — Enviar aviso a todos los grupos activos
-  Ejemplo: !avisar Mañana cerramos a las 22:00
-
-🧠 *Inteligencia artificial:*
-!resumen — Resumen IA de las últimas 24h
-!resumen [horas] — Ejemplo: !resumen 8
-
-!buscar [tema] — Busca en toda la conversación guardada del grupo
-  La IA encuentra todos los momentos en que se habló sobre ese tema,
-  con fecha, quién lo dijo y extractos literales de lo dicho.
-  Ejemplo: !buscar cuándo se habló del cambio de carta
-  Ejemplo: !buscar decisiones sobre el proveedor de pan
-
-🌐 *Panel de administración web:*
+━━━━━━━━━━━━━━━━━━━━
+🌐 *PANEL WEB*
+━━━━━━━━━━━━━━━━━━━━
 atm-bot-production.up.railway.app
 atm-bot-production.up.railway.app/admin
+  • Ver, añadir, completar y borrar tareas
+  • Ver historial de completadas
+  • Activar/desactivar grupos
+  • Configurar hora del recordatorio diario por grupo
+  • Los grupos se registran solos al primer mensaje
 
-Gestiona el bot desde el navegador:
-  • Ver y completar tareas de todos los grupos
-  • Añadir tareas directamente desde la web
-  • Ver historial de tareas completadas
-  • Activar/desactivar grupos con un toggle
-  • Configurar la hora del recordatorio diario por grupo
-  • Los grupos se detectan solos al recibir el primer mensaje
-
-❓ !ayuda — Mostrar este mensaje
-
+━━━━━━━━━━━━━━━━━━━━
+!ayuda — Mostrar este mensaje
 _Bot desarrollado para ATM Burgers 🍔_`
   })
 }
