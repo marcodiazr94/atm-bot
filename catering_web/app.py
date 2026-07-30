@@ -19,8 +19,6 @@ import importlib
 import pandas as pd
 import streamlit as st
 
-# Copiar secrets de Streamlit Cloud a os.environ para que db.py y ai_search.py
-# los encuentren con os.environ.get() igual que en local con .env
 try:
     for _k, _v in st.secrets.items():
         if isinstance(_v, str):
@@ -30,7 +28,7 @@ except Exception:
 
 from catering_web.auth import logout_button, require_login
 from sports_catering import db, engine
-importlib.reload(db)   # fuerza recarga para que Streamlit hot-reload recoja cambios
+importlib.reload(db)
 from sports_catering.config import load_config
 from sports_catering.contact_finder import find_contact
 from sports_catering.html_report import (
@@ -42,19 +40,44 @@ from sports_catering.html_report import (
 
 st.set_page_config(page_title="ATM Catering Deportivo", page_icon="🍔", layout="wide")
 
+# ── Constantes ─────────────────────────────────────────────────────────────────
+
 DEPORTES = ["Todos", "FUTBOL", "BALONCESTO", "BALONMANO", "VOLEIBOL", "HOCKEY PATINES"]
 
+EQUIPOS_ASTURIANOS = {
+    "REAL OVIEDO", "SPORTING GIJON", "SPORTING GIJÓN",
+    "TSK ROCES", "REAL OVIEDO VETUSTA", "LLANERA",
+    "CONFIA BASE OVIEDO", "REAL AVILES", "REAL AVILÉS",
+}
 
-# ─── Helpers ──────────────────────────────────────────────────────────────────
+DIAS_AVISO = 15  # antelación mínima recomendada para contactar
+
+ESTADOS_DISPLAY = {
+    "sin_contactar":     "⬜ Sin contactar",
+    "email_enviado":     "📧 Email enviado",
+    "pedido_confirmado": "✅ Pedido confirmado",
+    "sin_respuesta":     "🔕 Sin respuesta",
+    "no_interesado":     "❌ No interesado",
+}
+ESTADOS_LISTA = list(ESTADOS_DISPLAY.values())
+ESTADOS_DB    = {v: k for k, v in ESTADOS_DISPLAY.items()}
+
+ESTADOS_PAGO_DISPLAY = {
+    "pendiente": "⏳ Pendiente",
+    "cobrado":   "💰 Cobrado",
+    "cancelado": "❌ Cancelado",
+}
+ESTADOS_PAGO_LISTA = list(ESTADOS_PAGO_DISPLAY.values())
+ESTADOS_PAGO_DB    = {v: k for k, v in ESTADOS_PAGO_DISPLAY.items()}
+
+
+# ── Helpers ────────────────────────────────────────────────────────────────────
 
 def _build_subject(lead: dict) -> str:
-    return SUBJECT_TEMPLATE.format(rival=lead.get("rival", ""), ciudad=lead.get("ciudad", "Asturias"))
-
-
-def _mailto(lead: dict) -> str:
-    to = urllib.parse.quote(lead.get("email") or "")
-    params = urllib.parse.urlencode({"subject": _build_subject(lead), "body": EMAIL_TEMPLATE})
-    return f"mailto:{to}?{params}"
+    return SUBJECT_TEMPLATE.format(
+        rival=lead.get("rival", ""),
+        ciudad=lead.get("ciudad", "Asturias"),
+    )
 
 
 def _hora_str(hora) -> str:
@@ -63,21 +86,154 @@ def _hora_str(hora) -> str:
     return f"{int(hora):02d}:{round((hora % 1) * 60):02d}"
 
 
+def _fecha_dt(p) -> datetime | None:
+    try:
+        return datetime.fromisoformat(str(p["fecha"]).replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+def _dias_para(p) -> int | None:
+    fd = _fecha_dt(p)
+    if fd is None:
+        return None
+    return (fd - datetime.now(timezone.utc)).days
+
+
 @st.cache_data(show_spinner=False)
 def _cargar_config():
     return load_config()
 
 
-# ─── Pantalla: Partidos de la semana ──────────────────────────────────────────
+def _es_derbi(p: dict) -> bool:
+    return p.get("rival", "").upper() in EQUIPOS_ASTURIANOS
 
-EQUIPOS_ASTURIANOS = {"REAL OVIEDO", "SPORTING GIJON", "SPORTING GIJÓN"}
 
+# ── B: Pantalla de inicio / Dashboard ─────────────────────────────────────────
+
+def pantalla_inicio():
+    st.title("🏠 Panel de control")
+
+    try:
+        todos = db.get_partidos(solo_proximos=True)
+    except Exception as e:
+        st.error(f"Error al conectar con Supabase: {e}")
+        return
+
+    now = datetime.now(timezone.utc)
+    proximos_30, urgentes = [], []
+
+    for p in todos:
+        if _es_derbi(p):
+            continue
+        fd = _fecha_dt(p)
+        if fd is None:
+            continue
+        dias = (fd - now).days
+        if 0 <= dias <= 30:
+            proximos_30.append(p)
+        if 0 <= dias <= DIAS_AVISO and (p.get("estado") or "sin_contactar") == "sin_contactar":
+            urgentes.append(p)
+
+    proximos_30.sort(key=lambda p: _fecha_dt(p) or now)
+    urgentes.sort(key=lambda p: _fecha_dt(p) or now)
+
+    # ── E: Banner de alertas urgentes ─────────────────────────────────────
+    if urgentes:
+        lineas = [f"⚠️ **{len(urgentes)} partido(s) en los próximos {DIAS_AVISO} días sin contactar:**"]
+        for p in urgentes:
+            dias = _dias_para(p)
+            fd   = _fecha_dt(p)
+            lineas.append(
+                f"- **{p.get('equipo','')} vs {p.get('rival','')}** · "
+                f"en {dias} día(s) ({fd.strftime('%d/%m') if fd else '?'}) · "
+                f"{p.get('deporte','')} · {p.get('ciudad','')}"
+            )
+        st.warning("\n".join(lineas))
+    else:
+        st.success(f"✅ No hay partidos urgentes (próximos {DIAS_AVISO} días) sin contactar.")
+
+    st.divider()
+
+    # ── Métricas ──────────────────────────────────────────────────────────
+    confirmados      = [p for p in todos if p.get("estado") == "pedido_confirmado"]
+    ing_confirmado   = sum(float(p.get("importe_confirmado") or 0) for p in todos)
+    ing_presupuesto  = sum(float(p.get("importe_presupuestado") or 0) for p in todos)
+    cobrado          = sum(float(p.get("importe_confirmado") or 0)
+                          for p in todos if p.get("estado_pago") == "cobrado")
+
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Próximos 30 días", len(proximos_30))
+    m2.metric(f"Sin contactar (≤{DIAS_AVISO} días)", len(urgentes))
+    m3.metric("Pedidos confirmados", len(confirmados))
+    m4.metric("Ingresos confirmados", f"{ing_confirmado:.0f} €")
+
+    # ── Estado de los próximos 30 días ─────────────────────────────────────
+    if proximos_30:
+        st.divider()
+        st.subheader("Estado de los próximos 30 días")
+
+        por_estado = {}
+        for p in proximos_30:
+            e = p.get("estado") or "sin_contactar"
+            por_estado.setdefault(e, []).append(p)
+
+        for estado_key in ["sin_contactar", "email_enviado", "pedido_confirmado",
+                           "sin_respuesta", "no_interesado"]:
+            partidos_e = por_estado.get(estado_key, [])
+            if not partidos_e:
+                continue
+            label     = ESTADOS_DISPLAY.get(estado_key, estado_key)
+            expandido = estado_key in ("sin_contactar", "email_enviado")
+            with st.expander(f"{label} — {len(partidos_e)} partido(s)", expanded=expandido):
+                for p in partidos_e:
+                    fd   = _fecha_dt(p)
+                    dias = _dias_para(p)
+                    alerta   = " 🔴" if (dias is not None and 0 <= dias <= DIAS_AVISO) else ""
+                    fecha_txt = fd.strftime("%d/%m/%Y") if fd else "?"
+                    st.markdown(
+                        f"**{p.get('equipo','')} vs {p.get('rival','')}**{alerta} · "
+                        f"{fecha_txt} · {p.get('deporte','')} · {p.get('ciudad','')}"
+                    )
+                    if p.get("notas_partido"):
+                        st.caption(f"📝 {p['notas_partido']}")
+
+    # ── Resumen financiero ─────────────────────────────────────────────────
+    if ing_presupuesto > 0 or ing_confirmado > 0:
+        st.divider()
+        st.subheader("Resumen financiero — Temporada")
+        f1, f2, f3 = st.columns(3)
+        f1.metric("Total presupuestado", f"{ing_presupuesto:.0f} €")
+        f2.metric("Total confirmado", f"{ing_confirmado:.0f} €",
+                  delta=f"{ing_confirmado - ing_presupuesto:+.0f} € vs presupuesto")
+        f3.metric("Total cobrado", f"{cobrado:.0f} €")
+
+
+# ── Pantalla: Partidos de la semana ───────────────────────────────────────────
 
 def pantalla_partidos():
     st.title("📅 Partidos de la semana")
-    st.caption("Equipos visitantes que van a jugar en Asturias. Datos del calendario guardado en Supabase.")
+    st.caption("Equipos visitantes que van a jugar en Asturias.")
 
-    cfg = _cargar_config()
+    # E: alerta rápida al inicio
+    try:
+        todos_check = db.get_partidos(solo_proximos=True)
+        urgentes = [
+            p for p in todos_check
+            if not _es_derbi(p)
+            and (_dias_para(p) is not None)
+            and 0 <= _dias_para(p) <= DIAS_AVISO
+            and (p.get("estado") or "sin_contactar") == "sin_contactar"
+        ]
+        if urgentes:
+            st.warning(
+                f"⚠️ **{len(urgentes)} partido(s)** en los próximos {DIAS_AVISO} días "
+                f"sin contactar. Amplia el rango si no los ves abajo."
+            )
+    except Exception:
+        pass
+
+    cfg     = _cargar_config()
     ventana = cfg.get("lead_window_days", [14, 21])
 
     col1, col2, col3 = st.columns([1.3, 1.3, 1.3])
@@ -87,10 +243,10 @@ def pantalla_partidos():
         d_fin = st.number_input("Hasta (días)", min_value=1, max_value=180, value=int(ventana[1]))
     with col3:
         usar_ia = st.toggle("Buscar contactos con IA", value=True,
-                            help="Si el equipo no está en la base de datos, busca su contacto en Internet.")
+                            help="Si el equipo no está en la base de datos, lo busca en Internet.")
 
     if st.button("🔍 Buscar partidos", type="primary"):
-        now = datetime.now(timezone.utc)
+        now     = datetime.now(timezone.utc)
         w_start = now + timedelta(days=d_ini)
         w_end   = now + timedelta(days=d_fin)
 
@@ -98,24 +254,21 @@ def pantalla_partidos():
             todos = db.get_partidos(solo_proximos=True)
         except Exception as e:
             st.error(f"Error al cargar partidos: {e}")
-            st.info("Comprueba que SUPABASE_URL y SUPABASE_KEY están en los secrets.")
             return
 
-        # Filtrar por ventana de fechas y excluir derbis asturianos
         leads = []
         for p in todos:
-            try:
-                fecha = datetime.fromisoformat(str(p["fecha"]).replace("Z", "+00:00"))
-                if w_start <= fecha <= w_end and p.get("rival", "").upper() not in EQUIPOS_ASTURIANOS:
-                    leads.append(p)
-            except Exception:
-                pass
+            fd = _fecha_dt(p)
+            if fd and w_start <= fd <= w_end and not _es_derbi(p):
+                leads.append(p)
 
         if leads:
             with st.spinner("Buscando contactos..."):
                 for m in leads:
+                    pid = m.get("id")           # guardar antes de que find_contact lo sobreescriba
                     m.update(find_contact(m["rival"], use_ai=usar_ia,
                                           city=m.get("ciudad", ""), sport=m.get("deporte", "")))
+                    m["partido_id"] = pid       # restaurar con clave propia
 
         st.session_state["leads"] = leads
 
@@ -141,11 +294,13 @@ def pantalla_partidos():
 
 
 def _tarjeta_partido(lead: dict):
-    fecha = lead.get("date") or lead.get("fecha")
-    fecha_str = _format_date_es(fecha) if isinstance(fecha, datetime) else str(fecha or "")
-    status = lead.get("status", "missing")
-    rival = lead.get("rival", "")
+    fecha_dt   = _fecha_dt(lead)
+    fecha_str  = _format_date_es(fecha_dt) if fecha_dt else str(lead.get("fecha") or "")
+    status     = lead.get("status", "missing")
+    rival      = lead.get("rival", "")
     verificado = lead.get("verificado", False)
+    partido_id = lead.get("partido_id") or lead.get("id")
+    dias       = _dias_para(lead)
 
     badge = {
         "found_exact":   "✅ Verificado" if verificado else "📋 En base de datos",
@@ -155,7 +310,8 @@ def _tarjeta_partido(lead: dict):
         "missing":       "⚠️ Sin contacto",
     }.get(status, status)
 
-    # Recopilar todos los emails disponibles
+    urgencia = "🔴 " if (dias is not None and 0 <= dias <= DIAS_AVISO) else ""
+
     emails = lead.get("emails") or []
     if not emails and lead.get("email"):
         emails = [lead["email"]]
@@ -166,23 +322,49 @@ def _tarjeta_partido(lead: dict):
                 emails.append(e)
 
     with st.container(border=True):
-        # Cabecera
+
+        # ── Cabecera ─────────────────────────────────────────────────────
         c1, c2 = st.columns([3, 1])
         with c1:
-            st.markdown(f"**{lead.get('equipo','')} vs {rival}**  \n"
-                        f"`{lead.get('deporte','')}` · 📅 {fecha_str} {_hora_str(lead.get('hora'))} · "
-                        f"📍 {lead.get('lugar') or lead.get('ciudad','')}")
+            st.markdown(
+                f"**{urgencia}{lead.get('equipo','')} vs {rival}**  \n"
+                f"`{lead.get('deporte','')}` · 📅 {fecha_str} {_hora_str(lead.get('hora'))} · "
+                f"📍 {lead.get('lugar') or lead.get('ciudad','')}"
+            )
         with c2:
             st.markdown(f"<div style='text-align:right'>{badge}</div>", unsafe_allow_html=True)
 
+        # ── A: Estado del contacto ────────────────────────────────────────
+        if partido_id:
+            estado_actual_db  = lead.get("estado") or "sin_contactar"
+            estado_actual_txt = ESTADOS_DISPLAY.get(estado_actual_db, "⬜ Sin contactar")
+            col_est, col_save = st.columns([4, 1])
+            with col_est:
+                nuevo_estado_txt = st.selectbox(
+                    "Estado",
+                    ESTADOS_LISTA,
+                    index=ESTADOS_LISTA.index(estado_actual_txt) if estado_actual_txt in ESTADOS_LISTA else 0,
+                    key=f"est_{partido_id}",
+                    label_visibility="collapsed",
+                )
+            with col_save:
+                if st.button("Guardar", key=f"save_est_{partido_id}", use_container_width=True):
+                    nuevo_db = ESTADOS_DB.get(nuevo_estado_txt, "sin_contactar")
+                    try:
+                        db.update_partido(partido_id, estado=nuevo_db)
+                        lead["estado"] = nuevo_db
+                        st.toast(f"Estado: {nuevo_estado_txt}")
+                    except Exception as e:
+                        st.error(str(e))
+
         if status == "missing":
-            q = urllib.parse.quote_plus(f"{rival} club deportivo email contacto nutricionista")
+            q = urllib.parse.quote_plus(f"{rival} club deportivo email contacto")
             st.link_button("🔍 Buscar en Google", f"https://www.google.com/search?q={q}")
+            _widget_notas(lead, partido_id)
             return
 
-        # ── Contactos del club ──────────────────────────────────────────
+        # ── Contactos del club ────────────────────────────────────────────
         st.markdown("**Contactos del club**")
-
         info_linea = []
         if lead.get("telefono"):
             info_linea.append(f"📞 {lead['telefono']}")
@@ -198,15 +380,19 @@ def _tarjeta_partido(lead: dict):
             for email in emails:
                 col_email, col_btn = st.columns([3, 1])
                 col_email.markdown(f"✉️ `{email}`")
-                mailto = urllib.parse.urlencode({"subject": _build_subject(lead), "body": EMAIL_TEMPLATE})
-                col_btn.link_button("Enviar", f"mailto:{urllib.parse.quote(email)}?{mailto}",
-                                    key=f"mail_{rival}_{email}")
+                mailto_q = urllib.parse.urlencode(
+                    {"subject": _build_subject(lead), "body": EMAIL_TEMPLATE}
+                )
+                col_btn.link_button(
+                    "Enviar", f"mailto:{urllib.parse.quote(email)}?{mailto_q}",
+                    key=f"mail_{rival}_{email}",
+                )
 
         wa = _wa_link(lead.get("telefono")) if lead.get("telefono") else None
         if wa:
             st.link_button("💬 WhatsApp", wa)
 
-        # ── Nutricionista ───────────────────────────────────────────────
+        # ── Nutricionista ────────────────────────────────────────────────
         nutri_nombre = lead.get("nutricionista_nombre") or lead.get("nutricionista")
         nutri_email  = lead.get("nutricionista_email")
         nutri_ig     = lead.get("nutricionista_instagram")
@@ -214,8 +400,7 @@ def _tarjeta_partido(lead: dict):
 
         if nutri_nombre or nutri_email or nutri_ig:
             st.divider()
-            confirmado_txt = " ✓ confirmado" if nutri_ok else " (sin confirmar)"
-            st.markdown(f"**Nutricionista/Dietista**{confirmado_txt}")
+            st.markdown(f"**Nutricionista/Dietista**{' ✓' if nutri_ok else ' (sin confirmar)'}")
             nutri_linea = []
             if nutri_nombre:
                 nutri_linea.append(f"👤 {nutri_nombre}")
@@ -226,19 +411,20 @@ def _tarjeta_partido(lead: dict):
             if nutri_email:
                 col_ne, col_nb = st.columns([3, 1])
                 col_ne.markdown(f"✉️ `{nutri_email}`")
-                mailto_n = urllib.parse.urlencode({"subject": _build_subject(lead), "body": EMAIL_TEMPLATE})
-                col_nb.link_button("Enviar", f"mailto:{urllib.parse.quote(nutri_email)}?{mailto_n}",
-                                   key=f"mail_nutri_{rival}")
+                mailto_n = urllib.parse.urlencode(
+                    {"subject": _build_subject(lead), "body": EMAIL_TEMPLATE}
+                )
+                col_nb.link_button(
+                    "Enviar", f"mailto:{urllib.parse.quote(nutri_email)}?{mailto_n}",
+                    key=f"mail_nutri_{rival}",
+                )
 
-        # ── Buscar más contactos (si vino de Supabase y tiene info limitada) ──
-        pocos_emails = len(emails) <= 1
-        sin_nutri = not (lead.get("nutricionista_nombre") or lead.get("nutricionista"))
-        if status != "found_ai" and (pocos_emails or sin_nutri):
+        # ── Buscar más contactos ──────────────────────────────────────────
+        if status != "found_ai" and (len(emails) <= 1 or not (nutri_nombre or nutri_email)):
             if st.button("🔄 Buscar más contactos con IA", key=f"rebus_{rival}"):
                 with st.spinner(f"Buscando más información sobre {rival}..."):
                     ai = find_contact(rival, use_ai=True,
-                                      city=lead.get("ciudad", ""),
-                                      sport=lead.get("deporte", ""))
+                                      city=lead.get("ciudad", ""), sport=lead.get("deporte", ""))
                 st.session_state[f"extra_{rival}"] = ai
                 st.rerun()
 
@@ -249,35 +435,203 @@ def _tarjeta_partido(lead: dict):
                 if em not in emails:
                     col_e, col_b = st.columns([3, 1])
                     col_e.markdown(f"✉️ `{em}` *(IA)*")
-                    mailto_x = urllib.parse.urlencode({"subject": _build_subject(lead), "body": EMAIL_TEMPLATE})
-                    col_b.link_button("Enviar", f"mailto:{urllib.parse.quote(em)}?{mailto_x}",
-                                      key=f"mail_extra_{rival}_{em}")
+                    mailto_x = urllib.parse.urlencode(
+                        {"subject": _build_subject(lead), "body": EMAIL_TEMPLATE}
+                    )
+                    col_b.link_button(
+                        "Enviar", f"mailto:{urllib.parse.quote(em)}?{mailto_x}",
+                        key=f"mail_extra_{rival}_{em}",
+                    )
 
-        # ── Verificar + correo ──────────────────────────────────────────
+        # ── C: Email editable ─────────────────────────────────────────────
         st.divider()
-        col_v, col_exp = st.columns([1, 3])
+        with st.expander("✉️ Personalizar email antes de enviar"):
+            asunto_edit = st.text_input("Asunto", value=_build_subject(lead),
+                                        key=f"subj_{rival}")
+            cuerpo_edit = st.text_area("Cuerpo", value=EMAIL_TEMPLATE, height=220,
+                                       key=f"body_{rival}")
+            if emails:
+                dest = st.selectbox("Destinatario", emails, key=f"dest_{rival}")
+                mailto_custom = urllib.parse.urlencode(
+                    {"subject": asunto_edit, "body": cuerpo_edit}
+                )
+                st.link_button(
+                    "📤 Abrir en gestor de correo",
+                    f"mailto:{urllib.parse.quote(dest)}?{mailto_custom}",
+                    type="primary", use_container_width=True,
+                )
+
+        # ── Verificar contacto ─────────────────────────────────────────────
         if not verificado and lead.get("nombre"):
-            if col_v.button("☑️ Verificar", key=f"ver_{rival}"):
+            if st.button("☑️ Marcar contacto como verificado", key=f"ver_{rival}"):
                 try:
                     db.marcar_verificado(lead["nombre"])
                     st.toast(f"Contacto de {rival} marcado como verificado.")
                     st.rerun()
-                except RuntimeError as e:
+                except Exception as e:
                     st.warning(str(e))
 
-        with col_exp:
-            with st.expander("Ver correo redactado"):
-                st.text_input("Asunto", value=_build_subject(lead), key=f"subj_{id(lead)}")
-                st.text_area("Cuerpo", value=EMAIL_TEMPLATE, height=200, key=f"body_{id(lead)}")
+        # ── F: Notas del partido ──────────────────────────────────────────
+        _widget_notas(lead, partido_id)
 
 
-# ─── Pantalla: Calendario de temporada ────────────────────────────────────────
+def _widget_notas(lead: dict, partido_id: str | None):
+    if not partido_id:
+        return
+    notas_actuales = lead.get("notas_partido") or ""
+    with st.expander("📝 Notas del partido", expanded=bool(notas_actuales)):
+        notas_nuevas = st.text_area(
+            "Notas", value=notas_actuales, height=80,
+            placeholder="Ej: prefieren menú sin gluten · entregar 2h antes · contactar con el utillero...",
+            key=f"notas_{partido_id}",
+            label_visibility="collapsed",
+        )
+        if st.button("Guardar notas", key=f"save_notas_{partido_id}"):
+            try:
+                db.update_partido(partido_id, notas_partido=notas_nuevas or None)
+                lead["notas_partido"] = notas_nuevas
+                st.toast("Notas guardadas.")
+            except Exception as e:
+                st.error(str(e))
+
+
+# ── D: Pantalla de pedidos e ingresos ─────────────────────────────────────────
+
+def pantalla_pedidos():
+    st.title("💰 Pedidos e ingresos")
+    st.caption(
+        "Registra el importe de cada pedido y el estado de pago para controlar "
+        "lo que genera la iniciativa de catering deportivo."
+    )
+
+    try:
+        todos = db.get_partidos()  # todos, incluidos pasados
+    except Exception as e:
+        st.error(f"Error al conectar con Supabase: {e}")
+        return
+
+    partidos = [p for p in todos if not _es_derbi(p)]
+
+    if not partidos:
+        st.info("No hay partidos en el calendario. Importa los calendarios desde 'Calendario de temporada'.")
+        return
+
+    # ── Filtros ──────────────────────────────────────────────────────────
+    now = datetime.now(timezone.utc)
+    f1, f2, f3 = st.columns(3)
+    with f1:
+        solo_futuro = st.toggle("Solo próximos", value=False)
+    with f2:
+        solo_con_importe = st.toggle("Solo con importe registrado", value=False)
+    with f3:
+        filtro_pago = st.selectbox(
+            "Estado de pago", ["Todos"] + ESTADOS_PAGO_LISTA, label_visibility="visible"
+        )
+
+    if solo_futuro:
+        partidos = [p for p in partidos if (_fecha_dt(p) or now) >= now]
+    if solo_con_importe:
+        partidos = [p for p in partidos
+                    if p.get("importe_presupuestado") or p.get("importe_confirmado")]
+    if filtro_pago != "Todos":
+        val_db = ESTADOS_PAGO_DB.get(filtro_pago)
+        if val_db:
+            partidos = [p for p in partidos
+                        if (p.get("estado_pago") or "pendiente") == val_db]
+
+    partidos.sort(key=lambda p: _fecha_dt(p) or now)
+
+    # ── Totales ──────────────────────────────────────────────────────────
+    total_pres  = sum(float(p.get("importe_presupuestado") or 0) for p in partidos)
+    total_conf  = sum(float(p.get("importe_confirmado") or 0) for p in partidos)
+    total_cobr  = sum(float(p.get("importe_confirmado") or 0)
+                      for p in partidos if p.get("estado_pago") == "cobrado")
+    n_pedidos   = sum(1 for p in partidos if p.get("importe_confirmado"))
+
+    t1, t2, t3, t4 = st.columns(4)
+    t1.metric("Pedidos registrados", n_pedidos)
+    t2.metric("Total presupuestado", f"{total_pres:.0f} €")
+    t3.metric("Total confirmado", f"{total_conf:.0f} €")
+    t4.metric("Total cobrado", f"{total_cobr:.0f} €")
+
+    st.divider()
+
+    if not partidos:
+        st.info("No hay partidos con los filtros seleccionados.")
+        return
+
+    # ── Lista de partidos ─────────────────────────────────────────────────
+    for p in partidos:
+        pid = p.get("id")
+        fd  = _fecha_dt(p)
+        fecha_str = fd.strftime("%d/%m/%Y") if fd else "?"
+        estado_contacto = ESTADOS_DISPLAY.get(p.get("estado") or "sin_contactar", "⬜ Sin contactar")
+        estado_pago_txt = ESTADOS_PAGO_DISPLAY.get(p.get("estado_pago") or "pendiente", "⏳ Pendiente")
+        imp_conf        = float(p.get("importe_confirmado") or 0)
+
+        with st.container(border=True):
+            row_h, row_m = st.columns([3, 1])
+            with row_h:
+                st.markdown(
+                    f"**{p.get('equipo','')} vs {p.get('rival','')}** · "
+                    f"📅 {fecha_str} · `{p.get('deporte','')}` · {p.get('ciudad','')}"
+                )
+                st.caption(f"Contacto: {estado_contacto} · Pago: {estado_pago_txt}")
+                if p.get("notas_partido"):
+                    st.caption(f"📝 {p['notas_partido']}")
+            with row_m:
+                if imp_conf > 0:
+                    st.metric("Confirmado", f"{imp_conf:.0f} €",
+                              label_visibility="visible")
+
+            with st.expander("✏️ Registrar / editar pedido"):
+                pe1, pe2 = st.columns(2)
+                nuevo_pres = pe1.number_input(
+                    "Presupuestado (€)", min_value=0.0, step=10.0,
+                    value=float(p.get("importe_presupuestado") or 0),
+                    key=f"pres_{pid}",
+                )
+                nuevo_conf = pe2.number_input(
+                    "Confirmado (€)", min_value=0.0, step=10.0,
+                    value=float(p.get("importe_confirmado") or 0),
+                    key=f"conf_{pid}",
+                )
+                nuevo_pago_txt = st.selectbox(
+                    "Estado de pago",
+                    ESTADOS_PAGO_LISTA,
+                    index=ESTADOS_PAGO_LISTA.index(estado_pago_txt)
+                          if estado_pago_txt in ESTADOS_PAGO_LISTA else 0,
+                    key=f"pago_{pid}",
+                )
+                nueva_nota = st.text_area(
+                    "Notas del pedido",
+                    value=p.get("notas_partido") or "",
+                    height=68,
+                    placeholder="Alergias, hora de entrega, nº de personas, requisitos especiales...",
+                    key=f"nota_ped_{pid}",
+                )
+                if st.button("💾 Guardar pedido", key=f"save_ped_{pid}", type="primary"):
+                    try:
+                        db.update_partido(
+                            pid,
+                            importe_presupuestado=nuevo_pres if nuevo_pres > 0 else None,
+                            importe_confirmado=nuevo_conf if nuevo_conf > 0 else None,
+                            estado_pago=ESTADOS_PAGO_DB.get(nuevo_pago_txt, "pendiente"),
+                            notas_partido=nueva_nota or None,
+                        )
+                        st.toast("Pedido guardado.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(str(e))
+
+
+# ── Pantalla: Calendario de temporada ─────────────────────────────────────────
 
 def pantalla_calendario():
     st.title("🗓️ Calendario de temporada")
-    st.caption("Todos los partidos en casa de la temporada. Actualiza cuando quieras para refrescar los datos.")
+    st.caption("Todos los partidos en casa de la temporada.")
 
-    cfg = _cargar_config()
+    cfg   = _cargar_config()
     teams = cfg.get("teams", [])
 
     col1, col2, col3 = st.columns(3)
@@ -289,7 +643,7 @@ def pantalla_calendario():
         solo_proximos = st.toggle("Solo próximos", value=True)
 
     if st.button("🔄 Actualizar desde calendarios",
-                 help="Descarga los calendarios de todos los equipos automáticos (~30 seg)"):
+                 help="Descarga los calendarios automáticos (~30 seg)"):
         barra = st.progress(0.0, text="Iniciando...")
 
         def _prog(nombre, i, total):
@@ -313,12 +667,12 @@ def pantalla_calendario():
                                 f"[{t.get('manual_url','—')}]({t.get('manual_url','#')})")
 
     with st.expander("📥 Importar calendario desde Excel"):
-        tab_laliga, tab_generico = st.tabs(["⚽ Formato LaLiga (Oviedo & Sporting)", "🏀 Formato genérico (cualquier equipo)"])
+        tab_laliga, tab_generico = st.tabs(
+            ["⚽ Formato LaLiga (Oviedo & Sporting)", "🏀 Formato genérico (cualquier equipo)"]
+        )
 
-        # ── Tab 1: LaLiga ────────────────────────────────────────────────
         with tab_laliga:
-            st.caption("Excel oficial de LaLiga: descárgalo de laliga.es. "
-                       "Se importan automáticamente los partidos en casa de Oviedo y Sporting.")
+            st.caption("Excel oficial de LaLiga. Se importan automáticamente los partidos en casa de Oviedo y Sporting.")
             archivo_ll = st.file_uploader("Excel LaLiga", type=["xlsx"], key="cal_upload_ll")
             temp_ll    = st.text_input("Temporada", value="2026-27", key="cal_temp_ll")
 
@@ -333,7 +687,7 @@ def pantalla_calendario():
                     raw["visitante"] = raw["visitante"].astype(str).str.strip()
 
                     _MAP_LL = {
-                        "OVIEDO":   ("REAL OVIEDO",   "OVIEDO", "CARLOS TARTIERE"),
+                        "OVIEDO":   ("REAL OVIEDO",    "OVIEDO", "CARLOS TARTIERE"),
                         "SPORTING": ("SPORTING GIJON", "GIJON",  "EL MOLINON"),
                     }
                     casa = raw[raw["local"].str.upper().isin(_MAP_LL)].copy()
@@ -367,33 +721,31 @@ def pantalla_calendario():
                 except Exception as e:
                     st.error(f"Error leyendo el archivo: {e}")
 
-        # ── Tab 2: Genérico ──────────────────────────────────────────────
         with tab_generico:
-            st.caption("Para balonmano, baloncesto, fútbol femenino o cualquier otro equipo. "
-                       "El Excel debe tener al menos tres columnas: **fecha**, **equipo local** y **equipo visitante** "
-                       "(los nombres exactos de las columnas los indicas tú abajo).")
-
+            st.caption(
+                "Para balonmano, baloncesto, fútbol femenino o cualquier otro equipo. "
+                "El Excel debe tener al menos tres columnas: **fecha**, **equipo local** y **equipo visitante**."
+            )
             g1, g2 = st.columns(2)
-            equipo_g   = g1.text_input("Nombre del equipo *", placeholder="ej. Balonmano Gijón",  key="g_equipo")
-            ciudad_g   = g2.selectbox("Ciudad", ["GIJON", "OVIEDO"], key="g_ciudad")
-            deporte_g  = g1.selectbox("Deporte", ["FUTBOL", "BALONCESTO", "BALONMANO", "VOLEIBOL", "HOCKEY PATINES"], key="g_deporte")
-            lugar_g    = g2.text_input("Pabellón", placeholder="ej. Pabellón La Tejerona", key="g_lugar")
-            temp_g     = g1.text_input("Temporada", value="2026-27", key="g_temp")
+            equipo_g        = g1.text_input("Nombre del equipo *", placeholder="ej. Balonmano Gijón", key="g_equipo")
+            ciudad_g        = g2.selectbox("Ciudad", ["GIJON", "OVIEDO"], key="g_ciudad")
+            deporte_g       = g1.selectbox("Deporte", ["FUTBOL", "BALONCESTO", "BALONMANO",
+                                                        "VOLEIBOL", "HOCKEY PATINES"], key="g_deporte")
+            lugar_g         = g2.text_input("Pabellón", placeholder="ej. Pabellón La Tejerona", key="g_lugar")
+            temp_g          = g1.text_input("Temporada", value="2026-27", key="g_temp")
             nombre_en_excel = g2.text_input("Nombre del equipo en el Excel *",
                                             placeholder="Texto exacto que aparece como local",
                                             key="g_nombre_excel")
 
-            archivo_g = st.file_uploader("Excel del calendario", type=["xlsx", "xls", "csv"], key="cal_upload_g")
+            archivo_g = st.file_uploader("Excel del calendario", type=["xlsx", "xls", "csv"],
+                                          key="cal_upload_g")
 
             if archivo_g:
                 try:
-                    if archivo_g.name.endswith(".csv"):
-                        df_g = pd.read_csv(archivo_g)
-                    else:
-                        df_g = pd.read_excel(archivo_g)
+                    df_g = pd.read_csv(archivo_g) if archivo_g.name.endswith(".csv") \
+                           else pd.read_excel(archivo_g)
 
                     st.caption(f"Columnas detectadas: {', '.join(df_g.columns.tolist())}")
-
                     col_fecha = st.selectbox("¿Cuál es la columna de FECHA?",    df_g.columns.tolist(), key="g_col_fecha")
                     col_local = st.selectbox("¿Cuál es la columna de LOCAL?",    df_g.columns.tolist(), key="g_col_local")
                     col_visit = st.selectbox("¿Cuál es la columna de VISITANTE?", df_g.columns.tolist(), key="g_col_visit")
@@ -402,19 +754,18 @@ def pantalla_calendario():
                         df_g["_fecha"] = pd.to_datetime(df_g[col_fecha], errors="coerce")
                         df_g["_local"] = df_g[col_local].astype(str).str.strip()
                         df_g["_visit"] = df_g[col_visit].astype(str).str.strip()
-
                         casa_g = df_g[df_g["_local"].str.upper() == nombre_en_excel.strip().upper()].copy()
 
                         if casa_g.empty:
-                            st.warning(f"No se encontraron partidos donde el local sea '{nombre_en_excel}'. "
-                                       f"Revisa que el nombre coincide exactamente con lo que aparece en el Excel.")
+                            st.warning(f"No se encontraron partidos donde el local sea '{nombre_en_excel}'.")
                             st.dataframe(df_g[[col_local]].drop_duplicates().head(20),
                                          use_container_width=True, hide_index=True)
                         else:
                             prev_g = casa_g[["_fecha", "_local", "_visit"]].copy()
                             prev_g["_fecha"] = prev_g["_fecha"].dt.strftime("%d/%m/%Y")
                             st.caption(f"{len(casa_g)} partidos en casa encontrados:")
-                            st.dataframe(prev_g.rename(columns={"_fecha": "Fecha", "_local": "Local", "_visit": "Visitante"}),
+                            st.dataframe(prev_g.rename(columns={"_fecha": "Fecha",
+                                         "_local": "Local", "_visit": "Visitante"}),
                                          use_container_width=True, hide_index=True)
 
                             if st.button("⬆️ Guardar en Supabase", type="primary", key="btn_gen"):
@@ -450,7 +801,6 @@ def pantalla_calendario():
         )
     except RuntimeError as e:
         st.error(f"Supabase no configurado: {e}")
-        st.info("Añade SUPABASE_URL y SUPABASE_KEY a los secrets.")
         return
 
     if not partidos:
@@ -458,25 +808,27 @@ def pantalla_calendario():
         return
 
     st.caption(f"{len(partidos)} partidos encontrados")
-
     df = pd.DataFrame(partidos)
-    df["Fecha"] = pd.to_datetime(df["fecha"]).dt.strftime("%d/%m/%Y %H:%M")
+    df["Fecha"] = pd.to_datetime(df["fecha"]).dt.strftime("%d/%m/%Y")
+    cols_show = ["Fecha", "Equipo local", "Rival (visitante)", "Estado", "Deporte", "Ciudad", "Pabellón"]
     df = df.rename(columns={
         "equipo":  "Equipo local",
         "rival":   "Rival (visitante)",
         "deporte": "Deporte",
         "ciudad":  "Ciudad",
         "lugar":   "Pabellón",
-    })[["Fecha", "Equipo local", "Rival (visitante)", "Deporte", "Ciudad", "Pabellón"]]
+        "estado":  "Estado",
+    })
+    df["Estado"] = df["Estado"].map(ESTADOS_DISPLAY).fillna("⬜ Sin contactar")
+    existing_cols = [c for c in cols_show if c in df.columns]
+    st.dataframe(df[existing_cols], use_container_width=True, hide_index=True)
 
-    st.dataframe(df, use_container_width=True, hide_index=True)
 
-
-# ─── Pantalla: Contactos ──────────────────────────────────────────────────────
+# ── Pantalla: Contactos ────────────────────────────────────────────────────────
 
 def pantalla_contactos():
     st.title("📇 Contactos de equipos")
-    st.caption("Base de datos de equipos visitantes. Marca como verificado los contactos que hayas comprobado.")
+    st.caption("Base de datos de equipos visitantes.")
 
     col1, col2 = st.columns([2, 1])
     with col1:
@@ -494,11 +846,10 @@ def pantalla_contactos():
         contactos = db.get_contactos(verificado=verificado_filter, q=q or None)
     except RuntimeError as e:
         st.error(f"Supabase no configurado: {e}")
-        st.info("Añade SUPABASE_URL y SUPABASE_KEY a los secrets.")
         return
 
     if not contactos:
-        st.info("No hay contactos todavía. Se añaden automáticamente cuando se buscan leads con IA.")
+        st.info("No hay contactos todavía. Se añaden automáticamente al buscar leads con IA.")
     else:
         verificados = sum(1 for c in contactos if c.get("verificado"))
         c1, c2, c3 = st.columns(3)
@@ -508,11 +859,10 @@ def pantalla_contactos():
         st.divider()
 
         for c in contactos:
-            nombre = c.get("nombre", "")
+            nombre    = c.get("nombre", "")
             verificado = c.get("verificado", False)
-            badge = "✅" if verificado else "⚠️"
+            badge     = "✅" if verificado else "⚠️"
 
-            # Recopilar todos los emails
             emails = []
             if c.get("email"):
                 emails.append(c["email"])
@@ -525,9 +875,11 @@ def pantalla_contactos():
             with st.container(border=True):
                 h1, h2 = st.columns([4, 1])
                 with h1:
-                    st.markdown(f"**{badge} {nombre}** · `{c.get('deporte','') or ''}` · "
-                                f"*{c.get('fuente','') or ''}*"
-                                + (f" · confianza {c.get('confianza')}" if c.get("confianza") else ""))
+                    st.markdown(
+                        f"**{badge} {nombre}** · `{c.get('deporte','') or ''}` · "
+                        f"*{c.get('fuente','') or ''}*"
+                        + (f" · confianza {c.get('confianza')}" if c.get("confianza") else "")
+                    )
                 with h2:
                     if st.button("🗑️ Borrar", key=f"del_{nombre}"):
                         try:
@@ -554,16 +906,15 @@ def pantalla_contactos():
 
                 nutri = c.get("nutricionista")
                 if nutri or c.get("nutricionista_email") or c.get("nutricionista_instagram"):
-                    nutri_parts = []
+                    parts = []
                     if nutri:
-                        nutri_parts.append(f"👤 {nutri}")
+                        parts.append(f"👤 {nutri}")
                     if c.get("nutricionista_instagram"):
-                        nutri_parts.append(f"📸 {c['nutricionista_instagram']}")
+                        parts.append(f"📸 {c['nutricionista_instagram']}")
                     if c.get("nutricionista_email"):
-                        nutri_parts.append(f"✉️ {c['nutricionista_email']}")
-                    st.caption("Nutricionista: " + " · ".join(nutri_parts))
+                        parts.append(f"✉️ {c['nutricionista_email']}")
+                    st.caption("Nutricionista: " + " · ".join(parts))
 
-                # Botones verificar / editar
                 btn1, btn2 = st.columns([1, 3])
                 if not verificado:
                     if btn1.button("☑️ Verificar", key=f"ver_c_{nombre}"):
@@ -575,17 +926,17 @@ def pantalla_contactos():
                     with st.expander("✏️ Editar"):
                         with st.form(f"edit_{nombre}"):
                             e1, e2 = st.columns(2)
-                            new_email    = e1.text_input("Email principal", value=c.get("email") or "")
-                            new_tel      = e2.text_input("Teléfono", value=c.get("telefono") or "")
+                            new_email    = e1.text_input("Email principal",  value=c.get("email") or "")
+                            new_tel      = e2.text_input("Teléfono",         value=c.get("telefono") or "")
                             new_emails_x = e1.text_input("Emails extra (separados por coma)",
-                                                         value=c.get("emails_extra") or "")
-                            new_web      = e2.text_input("Web", value=c.get("web") or "")
+                                                          value=c.get("emails_extra") or "")
+                            new_web      = e2.text_input("Web",              value=c.get("web") or "")
                             new_nutri    = e1.text_input("Nutricionista (nombre)",
-                                                         value=c.get("nutricionista") or "")
+                                                          value=c.get("nutricionista") or "")
                             new_nutri_ig = e2.text_input("Instagram nutricionista",
-                                                         value=c.get("nutricionista_instagram") or "")
+                                                          value=c.get("nutricionista_instagram") or "")
                             new_nutri_em = st.text_input("Email nutricionista",
-                                                         value=c.get("nutricionista_email") or "")
+                                                          value=c.get("nutricionista_email") or "")
                             save_edit = st.form_submit_button("Guardar", type="primary")
                         if save_edit:
                             db.upsert_contacto({
@@ -611,19 +962,20 @@ def pantalla_contactos():
     with st.expander("➕ Añadir contacto manualmente"):
         with st.form("nuevo_contacto"):
             nc1, nc2 = st.columns(2)
-            nombre_new      = nc1.text_input("Nombre del club *")
-            deporte_new     = nc2.selectbox("Deporte", ["FUTBOL", "BALONCESTO", "BALONMANO", "VOLEIBOL", "HOCKEY PATINES"])
-            email_new       = nc1.text_input("Email principal")
-            telefono_new    = nc2.text_input("Teléfono")
+            nombre_new       = nc1.text_input("Nombre del club *")
+            deporte_new      = nc2.selectbox("Deporte", ["FUTBOL", "BALONCESTO", "BALONMANO",
+                                                          "VOLEIBOL", "HOCKEY PATINES"])
+            email_new        = nc1.text_input("Email principal")
+            telefono_new     = nc2.text_input("Teléfono")
             emails_extra_new = nc1.text_input("Emails extra (separados por coma)")
-            web_new         = nc2.text_input("Web")
+            web_new          = nc2.text_input("Web")
             st.markdown("**Nutricionista / Dietista**")
             nn1, nn2 = st.columns(2)
-            nutri_new       = nn1.text_input("Nombre")
-            nutri_ig_new    = nn2.text_input("Instagram")
-            nutri_email_new = nn1.text_input("Email")
-            notas_new       = st.text_area("Notas", height=60)
-            submitted       = st.form_submit_button("Guardar", type="primary")
+            nutri_new        = nn1.text_input("Nombre")
+            nutri_ig_new     = nn2.text_input("Instagram")
+            nutri_email_new  = nn1.text_input("Email")
+            notas_new        = st.text_area("Notas", height=60)
+            submitted        = st.form_submit_button("Guardar", type="primary")
 
         if submitted:
             if not nombre_new.strip():
@@ -650,7 +1002,7 @@ def pantalla_contactos():
                     st.error(str(e))
 
 
-# ─── Main ─────────────────────────────────────────────────────────────────────
+# ── Main ───────────────────────────────────────────────────────────────────────
 
 def main():
     if not require_login():
@@ -659,14 +1011,24 @@ def main():
     st.sidebar.markdown("### 🍔 ATM Catering")
     seccion = st.sidebar.radio(
         "Menú",
-        ["📅 Partidos de la semana", "🗓️ Calendario de temporada", "📇 Contactos"],
+        [
+            "🏠 Inicio",
+            "📅 Partidos de la semana",
+            "💰 Pedidos e ingresos",
+            "🗓️ Calendario de temporada",
+            "📇 Contactos",
+        ],
         label_visibility="collapsed",
     )
     st.sidebar.divider()
     logout_button()
 
-    if seccion.startswith("📅"):
+    if seccion.startswith("🏠"):
+        pantalla_inicio()
+    elif seccion.startswith("📅"):
         pantalla_partidos()
+    elif seccion.startswith("💰"):
+        pantalla_pedidos()
     elif seccion.startswith("🗓️"):
         pantalla_calendario()
     elif seccion.startswith("📇"):

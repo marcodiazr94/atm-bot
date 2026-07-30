@@ -78,6 +78,14 @@ def upsert_partidos(partidos: list[dict]) -> int:
     return len(rows)
 
 
+def update_partido(partido_id: str, **fields):
+    """Actualiza campos de un partido por ID (estado, notas_partido, importe, estado_pago, etc.)."""
+    if not partido_id or not fields:
+        return
+    client = _get_client()
+    client.table("partidos").update(fields).eq("id", partido_id).execute()
+
+
 def get_partidos(ciudad: str = None, deporte: str = None, solo_proximos: bool = False,
                  fecha_desde: datetime = None, fecha_hasta: datetime = None) -> list[dict]:
     """Devuelve partidos de Supabase ordenados por fecha con filtros opcionales."""
