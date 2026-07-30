@@ -1,0 +1,209 @@
+{
+  "lead_window_days": [14, 21],
+
+  "teams": [
+    {
+      "name": "REAL OVIEDO",
+      "city": "OVIEDO",
+      "sport": "FUTBOL",
+      "source": "espn",
+      "espn_id": 92,
+      "espn_league": "esp.1",
+      "venue": "CARLOS TARTIERE"
+    },
+    {
+      "name": "SPORTING GIJON",
+      "city": "GIJON",
+      "sport": "FUTBOL",
+      "source": "espn",
+      "espn_id": 3788,
+      "espn_league": "esp.2",
+      "venue": "EL MOLINON"
+    },
+    {
+      "name": "REAL OVIEDO FEMENINO",
+      "city": "OVIEDO",
+      "sport": "FUTBOL",
+      "source": "manual",
+      "manual_url": "https://rfef.es/competiciones/primera-federacion-femenina",
+      "venue": "CAMPO DIAZ VEGA"
+    },
+    {
+      "name": "SPORTING FEMENINO",
+      "city": "GIJON",
+      "sport": "FUTBOL",
+      "source": "manual",
+      "manual_url": "https://rfef.es/competiciones/primera-federacion-femenina",
+      "venue": "MAREO"
+    },
+    {
+      "name": "OVIEDO VETUSTA",
+      "city": "OVIEDO",
+      "sport": "FUTBOL",
+      "source": "manual",
+      "manual_url": "https://rfef.es/competiciones/segunda-federacion",
+      "venue": "REQUEXON"
+    },
+    {
+      "name": "OVIEDO JUVENIL",
+      "city": "OVIEDO",
+      "sport": "FUTBOL",
+      "source": "rfef_juvenil",
+      "rfef_url": "https://rfef.es/es/competiciones/division-de-honor-juvenil",
+      "rfef_team_keyword": "OVIEDO",
+      "venue": "REQUEXON"
+    },
+    {
+      "name": "SPORTING JUVENIL",
+      "city": "GIJON",
+      "sport": "FUTBOL",
+      "source": "rfef_juvenil",
+      "rfef_url": "https://rfef.es/es/competiciones/division-de-honor-juvenil",
+      "rfef_team_keyword": "SPORTING",
+      "venue": "MAREO"
+    },
+    {
+      "name": "TSK ROCES JUVENIL",
+      "city": "GIJON",
+      "sport": "FUTBOL",
+      "source": "rfef_juvenil",
+      "rfef_url": "https://rfef.es/es/competiciones/division-de-honor-juvenil",
+      "rfef_team_keyword": "ROCES",
+      "venue": "CAMPO COVADONGA GIJON"
+    },
+    {
+      "name": "OCB",
+      "city": "OVIEDO",
+      "sport": "BALONCESTO",
+      "source": "feb_envivo",
+      "feb_slug": "lebplata",
+      "feb_group": 1,
+      "feb_season_year": 2025,
+      "feb_team_keyword": "OVIEDO BALONCESTO",
+      "venue": "PALACIO DEPORTES"
+    },
+    {
+      "name": "CIRCULO GIJON",
+      "city": "GIJON",
+      "sport": "BALONCESTO",
+      "source": "feb_envivo",
+      "feb_slug": "segundafeb",
+      "feb_group": 2,
+      "feb_season_year": 2025,
+      "venue": "PABELLÓN DEPORTIVO ADOLFO SUÁREZ"
+    },
+    {
+      "name": "AD UNI. OVIEDO FEMENINO",
+      "city": "OVIEDO",
+      "sport": "BALONCESTO",
+      "source": "feb_competiciones",
+      "feb_autonomy_id": "7",
+      "feb_team_id": "22458",
+      "venue": "POLIDEPORTIVO DEL CAU"
+    },
+    {
+      "name": "FODEBA",
+      "city": "GIJON",
+      "sport": "BALONCESTO",
+      "source": "manual",
+      "manual_url": "https://baloncestoenvivo.feb.es",
+      "venue": "PALACIO DEPORTES LA GUIA"
+    },
+    {
+      "name": "SIROKO GIJON FEMENINO",
+      "city": "GIJON",
+      "sport": "BALONCESTO",
+      "source": "manual",
+      "manual_url": "https://baloncestoenvivo.feb.es",
+      "venue": "PALACIO DEPORTES LA GUIA"
+    },
+    {
+      "name": "BALONMANO GIJON",
+      "city": "GIJON",
+      "sport": "BALONMANO",
+      "source": "manual",
+      "manual_url": "https://www.sofascore.com/es/handball/team/bm-gijon/1106950",
+      "venue": "PABELLON MUNICIPAL LA TEJERONA"
+    },
+    {
+      "name": "OVIEDO BASE MASCULINO",
+      "city": "OVIEDO",
+      "sport": "BALONMANO",
+      "source": "manual",
+      "manual_url": "https://www.rfebm.com",
+      "venue": "POLIDEPORTIVO VALLOBIN"
+    },
+    {
+      "name": "OVIEDO BASE FEMENINO",
+      "city": "OVIEDO",
+      "sport": "BALONMANO",
+      "source": "manual",
+      "manual_url": "https://www.rfebm.com",
+      "venue": "POLIDEPORTIVO VALLOBIN"
+    },
+    {
+      "name": "LAS LOBAS GLOBAL ATAC OVIEDO",
+      "city": "OVIEDO",
+      "sport": "BALONMANO",
+      "source": "manual",
+      "manual_url": "https://www.rfebm.com",
+      "venue": "FLORIDA ARENA"
+    },
+    {
+      "name": "CV OVIEDO MASCULINO",
+      "city": "OVIEDO",
+      "sport": "VOLEIBOL",
+      "source": "manual",
+      "manual_url": "https://rfevb.com/competiciones",
+      "venue": "POLIDEPORTIVO EL TARANGU COLLOTO"
+    },
+    {
+      "name": "CV OVIEDO FEMENINO",
+      "city": "OVIEDO",
+      "sport": "VOLEIBOL",
+      "source": "manual",
+      "manual_url": "https://rfevb.com/competiciones",
+      "venue": "POLIDEPORTIVO EL TARANGU COLLOTO"
+    },
+    {
+      "name": "TELECABLE HOCKEY CLUB MASCULINO",
+      "city": "GIJON",
+      "sport": "HOCKEY PATINES",
+      "source": "manual",
+      "manual_url": "https://www.hockeypatines.fep.es",
+      "venue": "PABELLÓN MATA-JOVE"
+    },
+    {
+      "name": "TELECABLE HOCKEY CLUB FEMENINO",
+      "city": "GIJON",
+      "sport": "HOCKEY PATINES",
+      "source": "manual",
+      "manual_url": "https://www.hockeypatines.fep.es",
+      "venue": "PABELLÓN MATA-JOVE"
+    },
+    {
+      "name": "OVIEDO ROLLER HC MASCULINO",
+      "city": "OVIEDO",
+      "sport": "HOCKEY PATINES",
+      "source": "manual",
+      "manual_url": "https://www.hockeypatines.fep.es",
+      "venue": "POLIDEPORTIVO DE VILLAFRÚA"
+    },
+    {
+      "name": "OVIEDO ROLLER HC FEMENINO",
+      "city": "OVIEDO",
+      "sport": "HOCKEY PATINES",
+      "source": "manual",
+      "manual_url": "https://www.hockeypatines.fep.es",
+      "venue": "POLIDEPORTIVO DE VILLAFRÚA"
+    },
+    {
+      "name": "OVIEDO BOOLING CLUB",
+      "city": "OVIEDO",
+      "sport": "HOCKEY PATINES",
+      "source": "manual",
+      "manual_url": "https://www.hockeypatines.fep.es",
+      "venue": "POLIDEPORTIVO PEPÍN MORENO"
+    }
+  ]
+}
