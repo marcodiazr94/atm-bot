@@ -313,65 +313,133 @@ def pantalla_calendario():
                                 f"[{t.get('manual_url','—')}]({t.get('manual_url','#')})")
 
     with st.expander("📥 Importar calendario desde Excel"):
-        st.markdown(
-            "Sube el Excel del calendario de liga. "
-            "Debe tener columnas: **J · Fecha · Local · Fuera** (formato LaLiga). "
-            "Solo se importan los partidos en casa de Oviedo y Sporting."
-        )
-        archivo = st.file_uploader("Selecciona el Excel", type=["xlsx"], key="cal_upload")
-        temporada_inp = st.text_input("Temporada", value="2026-27", key="cal_temporada")
+        tab_laliga, tab_generico = st.tabs(["⚽ Formato LaLiga (Oviedo & Sporting)", "🏀 Formato genérico (cualquier equipo)"])
 
-        if archivo:
-            try:
-                raw = pd.read_excel(archivo, skiprows=1)
-                raw.columns = ["jornada", "fecha", "local", "esc_local",
-                               "gol1", "gol2", "esc_visit", "visitante"]
-                raw["jornada"] = raw["jornada"].ffill()
-                raw["fecha"]   = pd.to_datetime(raw["fecha"].ffill(), errors="coerce")
-                raw["local"]     = raw["local"].astype(str).str.strip()
-                raw["visitante"] = raw["visitante"].astype(str).str.strip()
+        # ── Tab 1: LaLiga ────────────────────────────────────────────────
+        with tab_laliga:
+            st.caption("Excel oficial de LaLiga: descárgalo de laliga.es. "
+                       "Se importan automáticamente los partidos en casa de Oviedo y Sporting.")
+            archivo_ll = st.file_uploader("Excel LaLiga", type=["xlsx"], key="cal_upload_ll")
+            temp_ll    = st.text_input("Temporada", value="2026-27", key="cal_temp_ll")
 
-                _MAP = {
-                    "OVIEDO":   ("REAL OVIEDO",    "OVIEDO", "CARLOS TARTIERE"),
-                    "SPORTING": ("SPORTING GIJON",  "GIJON",  "EL MOLINON"),
-                }
-                casa = raw[raw["local"].str.upper().isin(_MAP)].copy()
+            if archivo_ll:
+                try:
+                    raw = pd.read_excel(archivo_ll, skiprows=1)
+                    raw.columns = ["jornada", "fecha", "local", "esc_local",
+                                   "gol1", "gol2", "esc_visit", "visitante"]
+                    raw["jornada"]   = raw["jornada"].ffill()
+                    raw["fecha"]     = pd.to_datetime(raw["fecha"].ffill(), errors="coerce")
+                    raw["local"]     = raw["local"].astype(str).str.strip()
+                    raw["visitante"] = raw["visitante"].astype(str).str.strip()
 
-                if casa.empty:
-                    st.warning("No se encontraron partidos de Oviedo ni Sporting en el archivo.")
-                else:
-                    preview = casa[["jornada", "fecha", "local", "visitante"]].copy()
-                    preview["jornada"] = preview["jornada"].astype(int)
-                    preview["fecha"]   = preview["fecha"].dt.strftime("%d/%m/%Y")
-                    st.caption(f"{len(casa)} partidos en casa encontrados:")
-                    st.dataframe(preview.rename(columns={
-                        "jornada": "J", "fecha": "Fecha",
-                        "local": "Local", "visitante": "Visitante",
-                    }), use_container_width=True, hide_index=True)
+                    _MAP_LL = {
+                        "OVIEDO":   ("REAL OVIEDO",   "OVIEDO", "CARLOS TARTIERE"),
+                        "SPORTING": ("SPORTING GIJON", "GIJON",  "EL MOLINON"),
+                    }
+                    casa = raw[raw["local"].str.upper().isin(_MAP_LL)].copy()
 
-                    if st.button("⬆️ Guardar en Supabase", type="primary", key="btn_import_cal"):
-                        rows = []
-                        for _, r in casa.iterrows():
-                            nombre, ciudad, lugar = _MAP[r["local"].upper()]
-                            rows.append({
-                                "equipo":    nombre,
-                                "ciudad":    ciudad,
-                                "deporte":   "FUTBOL",
-                                "rival":     r["visitante"].upper(),
-                                "fecha":     r["fecha"].replace(hour=12, tzinfo=timezone.utc),
-                                "jornada":   int(r["jornada"]),
-                                "lugar":     lugar,
-                                "source":    "excel_import",
-                                "temporada": temporada_inp.strip(),
-                            })
-                        try:
-                            saved = db.upsert_partidos(rows)
-                            st.success(f"✅ {saved} partidos importados correctamente.")
-                            st.rerun()
-                        except RuntimeError as e:
-                            st.error(str(e))
-            except Exception as e:
-                st.error(f"Error leyendo el archivo: {e}")
+                    if casa.empty:
+                        st.warning("No se encontraron partidos de Oviedo ni Sporting.")
+                    else:
+                        prev = casa[["jornada", "fecha", "local", "visitante"]].copy()
+                        prev["fecha"] = prev["fecha"].dt.strftime("%d/%m/%Y")
+                        st.caption(f"{len(casa)} partidos encontrados:")
+                        st.dataframe(prev.rename(columns={"jornada": "J", "fecha": "Fecha",
+                                     "local": "Local", "visitante": "Visitante"}),
+                                     use_container_width=True, hide_index=True)
+                        if st.button("⬆️ Guardar en Supabase", type="primary", key="btn_ll"):
+                            rows = []
+                            for _, r in casa.iterrows():
+                                nombre, ciudad, lugar = _MAP_LL[r["local"].upper()]
+                                rows.append({
+                                    "equipo": nombre, "ciudad": ciudad, "deporte": "FUTBOL",
+                                    "rival":  r["visitante"].upper(),
+                                    "fecha":  r["fecha"].replace(hour=12, tzinfo=timezone.utc),
+                                    "jornada": int(r["jornada"]), "lugar": lugar,
+                                    "source": "excel_import", "temporada": temp_ll.strip(),
+                                })
+                            try:
+                                saved = db.upsert_partidos(rows)
+                                st.success(f"✅ {saved} partidos importados.")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(str(e))
+                except Exception as e:
+                    st.error(f"Error leyendo el archivo: {e}")
+
+        # ── Tab 2: Genérico ──────────────────────────────────────────────
+        with tab_generico:
+            st.caption("Para balonmano, baloncesto, fútbol femenino o cualquier otro equipo. "
+                       "El Excel debe tener al menos tres columnas: **fecha**, **equipo local** y **equipo visitante** "
+                       "(los nombres exactos de las columnas los indicas tú abajo).")
+
+            g1, g2 = st.columns(2)
+            equipo_g   = g1.text_input("Nombre del equipo *", placeholder="ej. Balonmano Gijón",  key="g_equipo")
+            ciudad_g   = g2.selectbox("Ciudad", ["GIJON", "OVIEDO"], key="g_ciudad")
+            deporte_g  = g1.selectbox("Deporte", ["FUTBOL", "BALONCESTO", "BALONMANO", "VOLEIBOL", "HOCKEY PATINES"], key="g_deporte")
+            lugar_g    = g2.text_input("Pabellón", placeholder="ej. Pabellón La Tejerona", key="g_lugar")
+            temp_g     = g1.text_input("Temporada", value="2026-27", key="g_temp")
+            nombre_en_excel = g2.text_input("Nombre del equipo en el Excel *",
+                                            placeholder="Texto exacto que aparece como local",
+                                            key="g_nombre_excel")
+
+            archivo_g = st.file_uploader("Excel del calendario", type=["xlsx", "xls", "csv"], key="cal_upload_g")
+
+            if archivo_g:
+                try:
+                    if archivo_g.name.endswith(".csv"):
+                        df_g = pd.read_csv(archivo_g)
+                    else:
+                        df_g = pd.read_excel(archivo_g)
+
+                    st.caption(f"Columnas detectadas: {', '.join(df_g.columns.tolist())}")
+
+                    col_fecha = st.selectbox("¿Cuál es la columna de FECHA?",    df_g.columns.tolist(), key="g_col_fecha")
+                    col_local = st.selectbox("¿Cuál es la columna de LOCAL?",    df_g.columns.tolist(), key="g_col_local")
+                    col_visit = st.selectbox("¿Cuál es la columna de VISITANTE?", df_g.columns.tolist(), key="g_col_visit")
+
+                    if equipo_g and nombre_en_excel:
+                        df_g["_fecha"] = pd.to_datetime(df_g[col_fecha], errors="coerce")
+                        df_g["_local"] = df_g[col_local].astype(str).str.strip()
+                        df_g["_visit"] = df_g[col_visit].astype(str).str.strip()
+
+                        casa_g = df_g[df_g["_local"].str.upper() == nombre_en_excel.strip().upper()].copy()
+
+                        if casa_g.empty:
+                            st.warning(f"No se encontraron partidos donde el local sea '{nombre_en_excel}'. "
+                                       f"Revisa que el nombre coincide exactamente con lo que aparece en el Excel.")
+                            st.dataframe(df_g[[col_local]].drop_duplicates().head(20),
+                                         use_container_width=True, hide_index=True)
+                        else:
+                            prev_g = casa_g[["_fecha", "_local", "_visit"]].copy()
+                            prev_g["_fecha"] = prev_g["_fecha"].dt.strftime("%d/%m/%Y")
+                            st.caption(f"{len(casa_g)} partidos en casa encontrados:")
+                            st.dataframe(prev_g.rename(columns={"_fecha": "Fecha", "_local": "Local", "_visit": "Visitante"}),
+                                         use_container_width=True, hide_index=True)
+
+                            if st.button("⬆️ Guardar en Supabase", type="primary", key="btn_gen"):
+                                rows_g = []
+                                for _, r in casa_g.iterrows():
+                                    if pd.isna(r["_fecha"]):
+                                        continue
+                                    rows_g.append({
+                                        "equipo":    equipo_g.strip().upper(),
+                                        "ciudad":    ciudad_g,
+                                        "deporte":   deporte_g,
+                                        "rival":     r["_visit"].upper(),
+                                        "fecha":     r["_fecha"].replace(hour=12, tzinfo=timezone.utc),
+                                        "lugar":     lugar_g or None,
+                                        "source":    "excel_import",
+                                        "temporada": temp_g.strip(),
+                                    })
+                                try:
+                                    saved = db.upsert_partidos(rows_g)
+                                    st.success(f"✅ {saved} partidos de {equipo_g} importados.")
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(str(e))
+                except Exception as e:
+                    st.error(f"Error leyendo el archivo: {e}")
 
     st.divider()
     try:
