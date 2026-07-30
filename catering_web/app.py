@@ -492,6 +492,99 @@ def _widget_notas(lead: dict, partido_id: str | None):
                 st.error(str(e))
 
 
+# ── Generador de ficha de cocina ──────────────────────────────────────────────
+
+def _generar_ficha_cocina(p: dict, fd, fecha_str: str) -> str:
+    rival      = p.get("rival", "")
+    equipo     = p.get("equipo", "")
+    deporte    = p.get("deporte", "")
+    ciudad     = p.get("ciudad", "")
+    hora_part  = _hora_str(p.get("hora")) or "—"
+    hora_entr  = p.get("hora_entrega") or "—"
+    chofer     = p.get("telefono_chofer") or "—"
+    direccion  = p.get("direccion_entrega") or "—"
+    importe    = f"{float(p.get('importe_confirmado') or 0):.0f} €"
+    notas      = p.get("notas_partido") or ""
+    link_sheet = p.get("link_sheet") or ""
+    estado_p   = ESTADOS_PAGO_DISPLAY.get(p.get("estado_pago") or "pendiente", "⏳ Pendiente")
+
+    sheet_html = (
+        f'<a href="{link_sheet}" style="color:#1a73e8">Ver pedidos individuales en Google Sheet →</a>'
+        if link_sheet else "<em>Sin enlace registrado</em>"
+    )
+
+    return f"""<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Ficha de cocina — {rival} {fecha_str}</title>
+<style>
+  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+          background: #fff; color: #222; padding: 32px; max-width: 720px; margin: auto; }}
+  .header {{ background: #1a1a2e; color: #fff; border-radius: 10px;
+             padding: 20px 24px; margin-bottom: 24px; }}
+  .header h1 {{ font-size: 20px; }}
+  .header .sub {{ opacity: .75; font-size: 13px; margin-top: 4px; }}
+  .grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }}
+  .box {{ border: 1px solid #e0e0e0; border-radius: 8px; padding: 14px 16px; }}
+  .box .label {{ font-size: 11px; text-transform: uppercase; color: #888;
+                 letter-spacing: .5px; margin-bottom: 4px; }}
+  .box .value {{ font-size: 18px; font-weight: 600; }}
+  .sheet-box {{ border: 2px solid #1a73e8; border-radius: 8px; padding: 14px 16px;
+                margin-bottom: 20px; }}
+  .sheet-box .label {{ font-size: 11px; text-transform: uppercase; color: #1a73e8;
+                       letter-spacing: .5px; margin-bottom: 6px; }}
+  .notes {{ background: #fffde7; border-left: 4px solid #f9a825;
+            padding: 12px 16px; border-radius: 0 8px 8px 0; margin-bottom: 20px;
+            font-size: 14px; line-height: 1.6; }}
+  .footer {{ font-size: 11px; color: #aaa; text-align: center; margin-top: 32px; }}
+  @media print {{ body {{ padding: 16px; }} }}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🍔 Ficha de cocina — {equipo} vs {rival}</h1>
+  <div class="sub">{deporte} · {fecha_str} {hora_part} · {ciudad}</div>
+</div>
+
+<div class="grid">
+  <div class="box">
+    <div class="label">Hora de entrega</div>
+    <div class="value">🕐 {hora_entr}</div>
+  </div>
+  <div class="box">
+    <div class="label">Receptor / chofer</div>
+    <div class="value">🚗 {chofer}</div>
+  </div>
+  <div class="box" style="grid-column: span 2">
+    <div class="label">Dirección de entrega</div>
+    <div class="value" style="font-size:15px">📍 {direccion}</div>
+  </div>
+  <div class="box">
+    <div class="label">Importe</div>
+    <div class="value">💰 {importe}</div>
+  </div>
+  <div class="box">
+    <div class="label">Estado de pago</div>
+    <div class="value" style="font-size:15px">{estado_p}</div>
+  </div>
+</div>
+
+<div class="sheet-box">
+  <div class="label">📊 Pedidos individuales de jugadores</div>
+  {sheet_html}
+</div>
+
+{"<div class='notes'><strong>📝 Notas:</strong><br>" + notas.replace(chr(10), "<br>") + "</div>" if notas else ""}
+
+<div class="footer">Generado por ATM Catering Deportivo · atmburgers.com</div>
+
+</body>
+</html>"""
+
+
 # ── D: Pantalla de pedidos e ingresos ─────────────────────────────────────────
 
 def pantalla_pedidos():
@@ -562,6 +655,8 @@ def pantalla_pedidos():
         estado_contacto = ESTADOS_DISPLAY.get(p.get("estado") or "sin_contactar", "⬜ Sin contactar")
         estado_pago_txt = ESTADOS_PAGO_DISPLAY.get(p.get("estado_pago") or "pendiente", "⏳ Pendiente")
         imp_conf        = float(p.get("importe_confirmado") or 0)
+        tiene_logistica = any(p.get(k) for k in ("hora_entrega", "telefono_chofer",
+                                                   "direccion_entrega", "link_sheet"))
 
         with st.container(border=True):
             row_h, row_m = st.columns([3, 1])
@@ -571,6 +666,17 @@ def pantalla_pedidos():
                     f"📅 {fecha_str} · `{p.get('deporte','')}` · {p.get('ciudad','')}"
                 )
                 st.caption(f"Contacto: {estado_contacto} · Pago: {estado_pago_txt}")
+                logistica_linea = []
+                if p.get("hora_entrega"):
+                    logistica_linea.append(f"🕐 {p['hora_entrega']}")
+                if p.get("telefono_chofer"):
+                    logistica_linea.append(f"🚗 {p['telefono_chofer']}")
+                if p.get("direccion_entrega"):
+                    logistica_linea.append(f"📍 {p['direccion_entrega']}")
+                if logistica_linea:
+                    st.caption(" · ".join(logistica_linea))
+                if p.get("link_sheet"):
+                    st.markdown(f"📊 [Ver pedidos en Google Sheet]({p['link_sheet']})")
                 if p.get("notas_partido"):
                     st.caption(f"📝 {p['notas_partido']}")
             with row_m:
@@ -578,6 +684,7 @@ def pantalla_pedidos():
                     st.metric("Confirmado", f"{imp_conf:.0f} €",
                               label_visibility="visible")
 
+            # ── Formulario de edición ──────────────────────────────────────
             with st.expander("✏️ Registrar / editar pedido"):
                 pe1, pe2 = st.columns(2)
                 nuevo_conf = pe1.number_input(
@@ -592,25 +699,65 @@ def pantalla_pedidos():
                           if estado_pago_txt in ESTADOS_PAGO_LISTA else 0,
                     key=f"pago_{pid}",
                 )
+
+                st.markdown("**Logística de entrega**")
+                lg1, lg2 = st.columns(2)
+                nueva_hora = lg1.text_input(
+                    "Hora de entrega", value=p.get("hora_entrega") or "",
+                    placeholder="ej. 20:30", key=f"hora_{pid}",
+                )
+                nuevo_chofer = lg2.text_input(
+                    "Teléfono del chofer / receptor", value=p.get("telefono_chofer") or "",
+                    placeholder="ej. 612 345 678", key=f"chofer_{pid}",
+                )
+                nueva_dir = st.text_input(
+                    "Campo / dirección de entrega", value=p.get("direccion_entrega") or "",
+                    placeholder="ej. Carlos Tartiere, zona vestuarios visitante",
+                    key=f"dir_{pid}",
+                )
+                nuevo_sheet = st.text_input(
+                    "Enlace Google Sheet de pedidos", value=p.get("link_sheet") or "",
+                    placeholder="https://docs.google.com/spreadsheets/...",
+                    key=f"sheet_{pid}",
+                )
                 nueva_nota = st.text_area(
-                    "Notas del pedido",
-                    value=p.get("notas_partido") or "",
+                    "Notas adicionales", value=p.get("notas_partido") or "",
                     height=68,
-                    placeholder="Alergias, hora de entrega, nº de personas, requisitos especiales...",
+                    placeholder="Alergias, nº de personas, instrucciones especiales...",
                     key=f"nota_ped_{pid}",
                 )
-                if st.button("💾 Guardar pedido", key=f"save_ped_{pid}", type="primary"):
+
+                btn1, btn2 = st.columns([1, 1])
+                if btn1.button("💾 Guardar", key=f"save_ped_{pid}", type="primary",
+                               use_container_width=True):
                     try:
                         db.update_partido(
                             pid,
                             importe_confirmado=nuevo_conf if nuevo_conf > 0 else None,
                             estado_pago=ESTADOS_PAGO_DB.get(nuevo_pago_txt, "pendiente"),
+                            hora_entrega=nueva_hora or None,
+                            telefono_chofer=nuevo_chofer or None,
+                            direccion_entrega=nueva_dir or None,
+                            link_sheet=nuevo_sheet or None,
                             notas_partido=nueva_nota or None,
                         )
                         st.toast("Pedido guardado.")
                         st.rerun()
                     except Exception as e:
                         st.error(str(e))
+
+                # Solo mostrar ficha si hay algo que mostrar
+                if tiene_logistica or imp_conf > 0 or p.get("link_sheet"):
+                    if btn2.button("🖨️ Ficha de cocina", key=f"ficha_{pid}",
+                                   use_container_width=True):
+                        html = _generar_ficha_cocina(p, fd, fecha_str)
+                        st.download_button(
+                            "⬇️ Descargar ficha (HTML)",
+                            data=html,
+                            file_name=f"ficha_{p.get('rival','partido').replace(' ','_')}_{fecha_str.replace('/','')}.html",
+                            mime="text/html",
+                            key=f"dl_ficha_{pid}",
+                        )
 
 
 # ── Pantalla: Calendario de temporada ─────────────────────────────────────────
