@@ -93,9 +93,9 @@ def pantalla_partidos():
 
         try:
             partidos = db.get_partidos(fecha_desde=w_start, fecha_hasta=w_end)
-        except RuntimeError as e:
-            st.error(str(e))
-            st.info("Añade SUPABASE_URL y SUPABASE_KEY a los secrets.")
+        except Exception as e:
+            st.error(f"Error al cargar partidos: {e}")
+            st.info("Comprueba que SUPABASE_URL y SUPABASE_KEY están en los secrets.")
             return
 
         # Excluir derbis asturianos

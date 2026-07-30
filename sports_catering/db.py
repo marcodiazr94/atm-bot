@@ -26,6 +26,17 @@ def _get_client():
     return create_client(url, key)
 
 
+def _to_filter_str(dt) -> str:
+    """Convierte datetime a string ISO UTC que acepta el cliente Supabase."""
+    if isinstance(dt, str):
+        return dt
+    if isinstance(dt, datetime):
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+    return str(dt)
+
+
 def _to_iso(dt) -> str | None:
     if not dt:
         return None
@@ -79,13 +90,9 @@ def get_partidos(ciudad: str = None, deporte: str = None, solo_proximos: bool = 
     if solo_proximos:
         q = q.gte("fecha", datetime.now(timezone.utc).isoformat())
     if fecha_desde:
-        if fecha_desde.tzinfo is None:
-            fecha_desde = fecha_desde.replace(tzinfo=timezone.utc)
-        q = q.gte("fecha", fecha_desde.isoformat())
+        q = q.gte("fecha", _to_filter_str(fecha_desde))
     if fecha_hasta:
-        if fecha_hasta.tzinfo is None:
-            fecha_hasta = fecha_hasta.replace(tzinfo=timezone.utc)
-        q = q.lte("fecha", fecha_hasta.isoformat())
+        q = q.lte("fecha", _to_filter_str(fecha_hasta))
     resp = q.execute()
     return resp.data or []
 
