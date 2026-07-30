@@ -543,13 +543,19 @@ def pantalla_contactos():
     with st.expander("➕ Añadir contacto manualmente"):
         with st.form("nuevo_contacto"):
             nc1, nc2 = st.columns(2)
-            nombre_new   = nc1.text_input("Nombre del club *")
-            deporte_new  = nc2.selectbox("Deporte", ["FUTBOL", "BALONCESTO", "BALONMANO", "VOLEIBOL", "HOCKEY PATINES"])
-            email_new    = nc1.text_input("Email principal")
-            telefono_new = nc2.text_input("Teléfono")
-            web_new      = nc1.text_input("Web")
-            notas_new    = st.text_area("Notas", height=60)
-            submitted    = st.form_submit_button("Guardar", type="primary")
+            nombre_new      = nc1.text_input("Nombre del club *")
+            deporte_new     = nc2.selectbox("Deporte", ["FUTBOL", "BALONCESTO", "BALONMANO", "VOLEIBOL", "HOCKEY PATINES"])
+            email_new       = nc1.text_input("Email principal")
+            telefono_new    = nc2.text_input("Teléfono")
+            emails_extra_new = nc1.text_input("Emails extra (separados por coma)")
+            web_new         = nc2.text_input("Web")
+            st.markdown("**Nutricionista / Dietista**")
+            nn1, nn2 = st.columns(2)
+            nutri_new       = nn1.text_input("Nombre")
+            nutri_ig_new    = nn2.text_input("Instagram")
+            nutri_email_new = nn1.text_input("Email")
+            notas_new       = st.text_area("Notas", height=60)
+            submitted       = st.form_submit_button("Guardar", type="primary")
 
         if submitted:
             if not nombre_new.strip():
@@ -557,14 +563,18 @@ def pantalla_contactos():
             else:
                 try:
                     db.upsert_contacto({
-                        "nombre":    nombre_new,
-                        "deporte":   deporte_new,
-                        "email":     email_new or None,
-                        "telefono":  telefono_new or None,
-                        "web":       web_new or None,
-                        "notas":     notas_new or None,
-                        "verificado": True,
-                        "fuente":    "manual",
+                        "nombre":                  nombre_new,
+                        "deporte":                 deporte_new,
+                        "email":                   email_new or None,
+                        "emails_extra":            emails_extra_new or None,
+                        "telefono":                telefono_new or None,
+                        "web":                     web_new or None,
+                        "nutricionista_nombre":    nutri_new or None,
+                        "nutricionista_instagram": nutri_ig_new or None,
+                        "nutricionista_email":     nutri_email_new or None,
+                        "notas":                   notas_new or None,
+                        "verificado":              True,
+                        "fuente":                  "manual",
                     })
                     st.success(f"Contacto '{nombre_new}' guardado.")
                     st.rerun()
