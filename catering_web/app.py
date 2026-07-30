@@ -92,17 +92,21 @@ def pantalla_partidos():
         w_end   = now + timedelta(days=d_fin)
 
         try:
-            partidos = db.get_partidos(fecha_desde=w_start, fecha_hasta=w_end)
+            todos = db.get_partidos(solo_proximos=True)
         except Exception as e:
             st.error(f"Error al cargar partidos: {e}")
             st.info("Comprueba que SUPABASE_URL y SUPABASE_KEY están en los secrets.")
             return
 
-        # Excluir derbis asturianos
-        leads = [
-            p for p in partidos
-            if p.get("rival", "").upper() not in EQUIPOS_ASTURIANOS
-        ]
+        # Filtrar por ventana de fechas y excluir derbis asturianos
+        leads = []
+        for p in todos:
+            try:
+                fecha = datetime.fromisoformat(str(p["fecha"]).replace("Z", "+00:00"))
+                if w_start <= fecha <= w_end and p.get("rival", "").upper() not in EQUIPOS_ASTURIANOS:
+                    leads.append(p)
+            except Exception:
+                pass
 
         if leads:
             with st.spinner("Buscando contactos..."):
