@@ -158,7 +158,6 @@ def pantalla_inicio():
     # ── Métricas ──────────────────────────────────────────────────────────
     confirmados      = [p for p in todos if p.get("estado") == "pedido_confirmado"]
     ing_confirmado   = sum(float(p.get("importe_confirmado") or 0) for p in todos)
-    ing_presupuesto  = sum(float(p.get("importe_presupuestado") or 0) for p in todos)
     cobrado          = sum(float(p.get("importe_confirmado") or 0)
                           for p in todos if p.get("estado_pago") == "cobrado")
 
@@ -199,14 +198,12 @@ def pantalla_inicio():
                         st.caption(f"📝 {p['notas_partido']}")
 
     # ── Resumen financiero ─────────────────────────────────────────────────
-    if ing_presupuesto > 0 or ing_confirmado > 0:
+    if ing_confirmado > 0:
         st.divider()
         st.subheader("Resumen financiero — Temporada")
-        f1, f2, f3 = st.columns(3)
-        f1.metric("Total presupuestado", f"{ing_presupuesto:.0f} €")
-        f2.metric("Total confirmado", f"{ing_confirmado:.0f} €",
-                  delta=f"{ing_confirmado - ing_presupuesto:+.0f} € vs presupuesto")
-        f3.metric("Total cobrado", f"{cobrado:.0f} €")
+        f1, f2 = st.columns(2)
+        f1.metric("Total confirmado", f"{ing_confirmado:.0f} €")
+        f2.metric("Total cobrado", f"{cobrado:.0f} €")
 
 
 # ── Pantalla: Partidos de la semana ───────────────────────────────────────────
@@ -505,7 +502,7 @@ def pantalla_pedidos():
     )
 
     try:
-        todos = db.get_partidos()  # todos, incluidos pasados
+        todos = db.get_partidos()
     except Exception as e:
         st.error(f"Error al conectar con Supabase: {e}")
         return
@@ -520,7 +517,7 @@ def pantalla_pedidos():
     now = datetime.now(timezone.utc)
     f1, f2, f3 = st.columns(3)
     with f1:
-        solo_futuro = st.toggle("Solo próximos", value=False)
+        solo_futuro = st.toggle("Solo próximos", value=True)
     with f2:
         solo_con_importe = st.toggle("Solo con importe registrado", value=False)
     with f3:
@@ -531,8 +528,7 @@ def pantalla_pedidos():
     if solo_futuro:
         partidos = [p for p in partidos if (_fecha_dt(p) or now) >= now]
     if solo_con_importe:
-        partidos = [p for p in partidos
-                    if p.get("importe_presupuestado") or p.get("importe_confirmado")]
+        partidos = [p for p in partidos if p.get("importe_confirmado")]
     if filtro_pago != "Todos":
         val_db = ESTADOS_PAGO_DB.get(filtro_pago)
         if val_db:
@@ -542,17 +538,15 @@ def pantalla_pedidos():
     partidos.sort(key=lambda p: _fecha_dt(p) or now)
 
     # ── Totales ──────────────────────────────────────────────────────────
-    total_pres  = sum(float(p.get("importe_presupuestado") or 0) for p in partidos)
     total_conf  = sum(float(p.get("importe_confirmado") or 0) for p in partidos)
     total_cobr  = sum(float(p.get("importe_confirmado") or 0)
                       for p in partidos if p.get("estado_pago") == "cobrado")
     n_pedidos   = sum(1 for p in partidos if p.get("importe_confirmado"))
 
-    t1, t2, t3, t4 = st.columns(4)
+    t1, t2, t3 = st.columns(3)
     t1.metric("Pedidos registrados", n_pedidos)
-    t2.metric("Total presupuestado", f"{total_pres:.0f} €")
-    t3.metric("Total confirmado", f"{total_conf:.0f} €")
-    t4.metric("Total cobrado", f"{total_cobr:.0f} €")
+    t2.metric("Total confirmado", f"{total_conf:.0f} €")
+    t3.metric("Total cobrado", f"{total_cobr:.0f} €")
 
     st.divider()
 
@@ -586,17 +580,12 @@ def pantalla_pedidos():
 
             with st.expander("✏️ Registrar / editar pedido"):
                 pe1, pe2 = st.columns(2)
-                nuevo_pres = pe1.number_input(
-                    "Presupuestado (€)", min_value=0.0, step=10.0,
-                    value=float(p.get("importe_presupuestado") or 0),
-                    key=f"pres_{pid}",
-                )
-                nuevo_conf = pe2.number_input(
-                    "Confirmado (€)", min_value=0.0, step=10.0,
+                nuevo_conf = pe1.number_input(
+                    "Importe del pedido (€)", min_value=0.0, step=10.0,
                     value=float(p.get("importe_confirmado") or 0),
                     key=f"conf_{pid}",
                 )
-                nuevo_pago_txt = st.selectbox(
+                nuevo_pago_txt = pe2.selectbox(
                     "Estado de pago",
                     ESTADOS_PAGO_LISTA,
                     index=ESTADOS_PAGO_LISTA.index(estado_pago_txt)
@@ -614,7 +603,6 @@ def pantalla_pedidos():
                     try:
                         db.update_partido(
                             pid,
-                            importe_presupuestado=nuevo_pres if nuevo_pres > 0 else None,
                             importe_confirmado=nuevo_conf if nuevo_conf > 0 else None,
                             estado_pago=ESTADOS_PAGO_DB.get(nuevo_pago_txt, "pendiente"),
                             notas_partido=nueva_nota or None,
