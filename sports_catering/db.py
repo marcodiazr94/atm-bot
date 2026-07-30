@@ -164,16 +164,51 @@ def delete_contacto(nombre: str):
     client.table("contactos").delete().eq("nombre", nombre.upper().strip()).execute()
 
 
+import unicodedata
+import difflib
+import re as _re
+
+# Palabras sin valor identificativo en nombres de clubes
+_STOPWORDS = {
+    "REAL", "CLUB", "DE", "LA", "LOS", "LAS", "EL", "DEL", "SD", "CD", "CF",
+    "BM", "CB", "SAD", "RC", "RS", "ED", "UD", "CP", "AD", "SL", "FC", "SC",
+    "THE", "AND", "Y", "E", "TSK",
+}
+
+
 def _norm(s: str) -> str:
-    """Normaliza a mayúsculas sin acentos para comparaciones tolerantes."""
-    import unicodedata
-    return unicodedata.normalize("NFD", s.upper().strip()).encode("ascii", "ignore").decode()
+    """Normaliza a mayúsculas sin acentos ni puntuación."""
+    s = unicodedata.normalize("NFD", s.upper().strip()).encode("ascii", "ignore").decode()
+    return _re.sub(r"[^A-Z0-9 ]", " ", s)
+
+
+def _tokens(s: str) -> set[str]:
+    """Palabras significativas del nombre (≥3 chars, sin stopwords)."""
+    return {w for w in _norm(s).split() if len(w) >= 3 and w not in _STOPWORDS}
+
+
+def _token_score(a: str, b: str) -> float:
+    """
+    Puntuación 0-1 basada en solapamiento de tokens con fuzzy por palabra.
+    'Sporting' vs 'Real Sporting de Gijón' → 1.0
+    'La Atletic' vs 'Athletic Club'       → ~0.85
+    """
+    ta, tb = _tokens(a), _tokens(b)
+    if not ta or not tb:
+        return 0.0
+    smaller, larger = (ta, tb) if len(ta) <= len(tb) else (tb, ta)
+    scores = []
+    for tok in smaller:
+        best = max((difflib.SequenceMatcher(None, tok, t).ratio() for t in larger), default=0)
+        scores.append(best)
+    return sum(scores) / len(smaller)
 
 
 def get_contacto_por_nombre(nombre: str) -> dict | None:
     """
-    Busca un contacto en Supabase con tolerancia a tildes y variaciones de nombre.
-    Orden: exacto → ILIKE → fuzzy en Python (difflib sobre todos los contactos).
+    Busca un contacto en Supabase con tolerancia a tildes, nombres parciales
+    y variaciones ("Sporting" → "Real Sporting de Gijón", "Atletic" → "Athletic").
+    Orden: exacto → ILIKE → token-fuzzy en Python sobre todos los contactos.
     """
     if not nombre:
         return None
@@ -188,17 +223,19 @@ def get_contacto_por_nombre(nombre: str) -> dict | None:
     if resp.data:
         return resp.data[0]
 
-    # Fuzzy matching en Python con normalización de acentos
-    import difflib
+    # Token-fuzzy sobre todos los contactos
     todos = (client.table("contactos").select("id,nombre").execute().data or [])
     if not todos:
         return None
-    key_norm = _norm(nombre)
-    candidatos = {c["nombre"]: _norm(c["nombre"]) for c in todos}
-    matches = difflib.get_close_matches(key_norm, list(candidatos.values()), n=1, cutoff=0.72)
-    if matches:
-        nombre_orig = next(n for n, v in candidatos.items() if v == matches[0])
-        resp = client.table("contactos").select("*").eq("nombre", nombre_orig).limit(1).execute()
+
+    mejor, mejor_score = None, 0.0
+    for c in todos:
+        score = _token_score(nombre, c["nombre"])
+        if score > mejor_score:
+            mejor_score, mejor = score, c["nombre"]
+
+    if mejor and mejor_score >= 0.70:
+        resp = client.table("contactos").select("*").eq("nombre", mejor).limit(1).execute()
         if resp.data:
             return resp.data[0]
     return None
