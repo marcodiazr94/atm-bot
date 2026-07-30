@@ -1,6 +1,6 @@
-# 🍔 ATM Bot — Secretaria Virtual de WhatsApp
+# 🍔 ATM Catering Deportivo
 
-Bot de WhatsApp con IA para la gestión de tareas y resúmenes en los grupos de ATM Burgers.
+Gestión de catering deportivo post-partido para equipos visitantes en Asturias.
 
 ---
 
