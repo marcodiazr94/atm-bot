@@ -67,7 +67,8 @@ def upsert_partidos(partidos: list[dict]) -> int:
     return len(rows)
 
 
-def get_partidos(ciudad: str = None, deporte: str = None, solo_proximos: bool = False) -> list[dict]:
+def get_partidos(ciudad: str = None, deporte: str = None, solo_proximos: bool = False,
+                 fecha_desde: datetime = None, fecha_hasta: datetime = None) -> list[dict]:
     """Devuelve partidos de Supabase ordenados por fecha con filtros opcionales."""
     client = _get_client()
     q = client.table("partidos").select("*").order("fecha")
@@ -77,6 +78,14 @@ def get_partidos(ciudad: str = None, deporte: str = None, solo_proximos: bool = 
         q = q.eq("deporte", deporte.upper())
     if solo_proximos:
         q = q.gte("fecha", datetime.now(timezone.utc).isoformat())
+    if fecha_desde:
+        if fecha_desde.tzinfo is None:
+            fecha_desde = fecha_desde.replace(tzinfo=timezone.utc)
+        q = q.gte("fecha", fecha_desde.isoformat())
+    if fecha_hasta:
+        if fecha_hasta.tzinfo is None:
+            fecha_hasta = fecha_hasta.replace(tzinfo=timezone.utc)
+        q = q.lte("fecha", fecha_hasta.isoformat())
     resp = q.execute()
     return resp.data or []
 

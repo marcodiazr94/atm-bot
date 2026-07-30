@@ -67,41 +67,42 @@ def _cargar_config():
 
 # ─── Pantalla: Partidos de la semana ──────────────────────────────────────────
 
+EQUIPOS_ASTURIANOS = {"REAL OVIEDO", "SPORTING GIJON", "SPORTING GIJÓN"}
+
+
 def pantalla_partidos():
     st.title("📅 Partidos de la semana")
-    st.caption("Busca los equipos de fuera que van a jugar en Asturias y prepara el contacto para ofrecerles catering.")
+    st.caption("Equipos visitantes que van a jugar en Asturias. Datos del calendario guardado en Supabase.")
 
     cfg = _cargar_config()
-    teams = cfg.get("teams", [])
     ventana = cfg.get("lead_window_days", [14, 21])
 
-    col1, col2, col3, col4 = st.columns([1.3, 1.3, 1.3, 2])
+    col1, col2, col3 = st.columns([1.3, 1.3, 1.3])
     with col1:
         d_ini = st.number_input("Desde (días)", min_value=0, max_value=120, value=int(ventana[0]))
     with col2:
         d_fin = st.number_input("Hasta (días)", min_value=1, max_value=180, value=int(ventana[1]))
     with col3:
         usar_ia = st.toggle("Buscar contactos con IA", value=True,
-                            help="Si un equipo no está en la base de datos, busca su contacto en Internet.")
-    with col4:
-        demo = st.toggle("Modo demostración", value=False,
-                         help="Muestra partidos de ejemplo para ver la interfaz cuando la temporada está parada.")
+                            help="Si el equipo no está en la base de datos, busca su contacto en Internet.")
 
     if st.button("🔍 Buscar partidos", type="primary"):
-        now = datetime.now()
-        w_start, w_end = now + timedelta(days=d_ini), now + timedelta(days=d_fin)
+        now = datetime.now(timezone.utc)
+        w_start = now + timedelta(days=d_ini)
+        w_end   = now + timedelta(days=d_fin)
 
-        if demo:
-            leads = engine.leads_demo(now)
-        else:
-            barra = st.progress(0.0, text="Buscando partidos...")
+        try:
+            partidos = db.get_partidos(fecha_desde=w_start, fecha_hasta=w_end)
+        except RuntimeError as e:
+            st.error(str(e))
+            st.info("Añade SUPABASE_URL y SUPABASE_KEY a los secrets.")
+            return
 
-            def _prog(nombre, i, total):
-                barra.progress((i + 1) / max(total, 1), text=f"Consultando: {nombre}")
-
-            with st.spinner("Descargando calendarios..."):
-                leads, _manual = engine.buscar_partidos_casa(teams, w_start, w_end, on_progress=_prog)
-            barra.empty()
+        # Excluir derbis asturianos
+        leads = [
+            p for p in partidos
+            if p.get("rival", "").upper() not in EQUIPOS_ASTURIANOS
+        ]
 
         if leads:
             with st.spinner("Buscando contactos..."):
@@ -116,7 +117,8 @@ def pantalla_partidos():
         st.info("Pulsa **Buscar partidos** para empezar.")
         return
     if not leads:
-        st.success("✅ No hay partidos nuevos en la ventana seleccionada.")
+        st.success("✅ No hay partidos en la ventana seleccionada.")
+        st.caption("Si acabas de importar el calendario, prueba a ampliar el rango de días.")
         return
 
     con_email = [l for l in leads if l.get("email")]
