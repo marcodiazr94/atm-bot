@@ -61,6 +61,7 @@ def upsert_partidos(partidos: list[dict]) -> int:
             "lugar":     p.get("lugar", "") or "",
             "source":    p.get("source", "") or "",
             "temporada": p.get("temporada", "") or "",
+            "jornada":   p.get("jornada"),
         })
     client.table("partidos").upsert(rows, on_conflict="equipo,rival,fecha").execute()
     return len(rows)
