@@ -227,6 +227,29 @@ def _tarjeta_partido(lead: dict):
                 col_nb.link_button("Enviar", f"mailto:{urllib.parse.quote(nutri_email)}?{mailto_n}",
                                    key=f"mail_nutri_{rival}")
 
+        # ── Buscar más contactos (si vino de Supabase y tiene info limitada) ──
+        pocos_emails = len(emails) <= 1
+        sin_nutri = not (lead.get("nutricionista_nombre") or lead.get("nutricionista"))
+        if status != "found_ai" and (pocos_emails or sin_nutri):
+            if st.button("🔄 Buscar más contactos con IA", key=f"rebus_{rival}"):
+                with st.spinner(f"Buscando más información sobre {rival}..."):
+                    ai = find_contact(rival, use_ai=True,
+                                      city=lead.get("ciudad", ""),
+                                      sport=lead.get("deporte", ""))
+                st.session_state[f"extra_{rival}"] = ai
+                st.rerun()
+
+        extra = st.session_state.get(f"extra_{rival}")
+        if extra and extra.get("status") == "found_ai":
+            new_emails = extra.get("emails") or ([extra["email"]] if extra.get("email") else [])
+            for em in new_emails:
+                if em not in emails:
+                    col_e, col_b = st.columns([3, 1])
+                    col_e.markdown(f"✉️ `{em}` *(IA)*")
+                    mailto_x = urllib.parse.urlencode({"subject": _build_subject(lead), "body": EMAIL_TEMPLATE})
+                    col_b.link_button("Enviar", f"mailto:{urllib.parse.quote(em)}?{mailto_x}",
+                                      key=f"mail_extra_{rival}_{em}")
+
         # ── Verificar + correo ──────────────────────────────────────────
         st.divider()
         col_v, col_exp = st.columns([1, 3])
@@ -405,79 +428,122 @@ def pantalla_contactos():
 
     if not contactos:
         st.info("No hay contactos todavía. Se añaden automáticamente cuando se buscan leads con IA.")
-        return
+    else:
+        verificados = sum(1 for c in contactos if c.get("verificado"))
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Total contactos", len(contactos))
+        c2.metric("✅ Verificados", verificados)
+        c3.metric("⚠️ Sin verificar", len(contactos) - verificados)
+        st.divider()
 
-    verificados = sum(1 for c in contactos if c.get("verificado"))
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Total contactos", len(contactos))
-    c2.metric("✅ Verificados", verificados)
-    c3.metric("⚠️ Sin verificar", len(contactos) - verificados)
+        for c in contactos:
+            nombre = c.get("nombre", "")
+            verificado = c.get("verificado", False)
+            badge = "✅" if verificado else "⚠️"
+
+            # Recopilar todos los emails
+            emails = []
+            if c.get("email"):
+                emails.append(c["email"])
+            if c.get("emails_extra"):
+                for e in c["emails_extra"].split(","):
+                    e = e.strip()
+                    if e and e not in emails:
+                        emails.append(e)
+
+            with st.container(border=True):
+                h1, h2 = st.columns([4, 1])
+                with h1:
+                    st.markdown(f"**{badge} {nombre}** · `{c.get('deporte','') or ''}` · "
+                                f"*{c.get('fuente','') or ''}*"
+                                + (f" · confianza {c.get('confianza')}" if c.get("confianza") else ""))
+                with h2:
+                    if st.button("🗑️ Borrar", key=f"del_{nombre}"):
+                        try:
+                            db.delete_contacto(nombre)
+                            st.toast(f"Contacto '{nombre}' eliminado.")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(str(e))
+
+                info = []
+                if c.get("telefono"):
+                    info.append(f"📞 {c['telefono']}")
+                if c.get("web"):
+                    info.append(f"🌐 [{c['web']}]({c['web']})")
+                if c.get("instagram"):
+                    info.append(f"📸 {c['instagram']}")
+                if info:
+                    st.caption(" · ".join(info))
+
+                for email in emails:
+                    st.markdown(f"✉️ `{email}`")
+
+                nutri = c.get("nutricionista")
+                if nutri or c.get("nutricionista_email") or c.get("nutricionista_instagram"):
+                    nutri_parts = []
+                    if nutri:
+                        nutri_parts.append(f"👤 {nutri}")
+                    if c.get("nutricionista_instagram"):
+                        nutri_parts.append(f"📸 {c['nutricionista_instagram']}")
+                    if c.get("nutricionista_email"):
+                        nutri_parts.append(f"✉️ {c['nutricionista_email']}")
+                    st.caption("Nutricionista: " + " · ".join(nutri_parts))
+
+                # Botones verificar / editar
+                btn1, btn2 = st.columns([1, 3])
+                if not verificado:
+                    if btn1.button("☑️ Verificar", key=f"ver_c_{nombre}"):
+                        db.marcar_verificado(nombre)
+                        st.toast(f"'{nombre}' marcado como verificado.")
+                        st.rerun()
+
+                with btn2:
+                    with st.expander("✏️ Editar"):
+                        with st.form(f"edit_{nombre}"):
+                            e1, e2 = st.columns(2)
+                            new_email    = e1.text_input("Email principal", value=c.get("email") or "")
+                            new_tel      = e2.text_input("Teléfono", value=c.get("telefono") or "")
+                            new_emails_x = e1.text_input("Emails extra (separados por coma)",
+                                                         value=c.get("emails_extra") or "")
+                            new_web      = e2.text_input("Web", value=c.get("web") or "")
+                            new_nutri    = e1.text_input("Nutricionista (nombre)",
+                                                         value=c.get("nutricionista") or "")
+                            new_nutri_ig = e2.text_input("Instagram nutricionista",
+                                                         value=c.get("nutricionista_instagram") or "")
+                            new_nutri_em = st.text_input("Email nutricionista",
+                                                         value=c.get("nutricionista_email") or "")
+                            save_edit = st.form_submit_button("Guardar", type="primary")
+                        if save_edit:
+                            db.upsert_contacto({
+                                "nombre":                  nombre,
+                                "email":                   new_email or None,
+                                "emails_extra":            new_emails_x or None,
+                                "telefono":                new_tel or None,
+                                "web":                     new_web or None,
+                                "nutricionista_nombre":    new_nutri or None,
+                                "nutricionista_instagram": new_nutri_ig or None,
+                                "nutricionista_email":     new_nutri_em or None,
+                                "verificado":              verificado,
+                                "fuente":                  c.get("fuente", "manual"),
+                                "deporte":                 c.get("deporte"),
+                                "confianza":               c.get("confianza"),
+                                "instagram":               c.get("instagram"),
+                                "notas":                   c.get("notas"),
+                            })
+                            st.toast(f"'{nombre}' actualizado.")
+                            st.rerun()
+
     st.divider()
-
-    df = pd.DataFrame(contactos)
-    cols_show = ["nombre", "deporte", "email", "telefono", "fuente", "confianza", "verificado"]
-    for col in cols_show:
-        if col not in df.columns:
-            df[col] = None
-
-    edited = st.data_editor(
-        df[cols_show].copy(),
-        column_config={
-            "verificado": st.column_config.CheckboxColumn(
-                "✅ Verificado",
-                help="Marca si has comprobado que este contacto es válido",
-                default=False,
-            ),
-            "nombre":    st.column_config.TextColumn("Club", disabled=True),
-            "deporte":   st.column_config.TextColumn("Deporte", disabled=True),
-            "email":     st.column_config.TextColumn("Email"),
-            "telefono":  st.column_config.TextColumn("Teléfono"),
-            "fuente":    st.column_config.TextColumn("Fuente", disabled=True),
-            "confianza": st.column_config.TextColumn("Confianza IA", disabled=True),
-        },
-        use_container_width=True,
-        hide_index=True,
-        key="contacts_editor",
-        num_rows="fixed",
-    )
-
-    if st.button("💾 Guardar cambios", type="primary"):
-        cambios = 0
-        for i, row in edited.iterrows():
-            orig = contactos[i]
-            if (row.get("verificado") != orig.get("verificado")
-                    or row.get("email") != orig.get("email")
-                    or row.get("telefono") != orig.get("telefono")):
-                db.upsert_contacto({
-                    "nombre":    row["nombre"],
-                    "email":     row.get("email"),
-                    "telefono":  row.get("telefono"),
-                    "verificado": bool(row.get("verificado", False)),
-                    "fuente":    orig.get("fuente", "manual"),
-                    "deporte":   orig.get("deporte"),
-                    "confianza": orig.get("confianza"),
-                    "web":       orig.get("web"),
-                    "instagram": orig.get("instagram"),
-                    "contacto":  orig.get("contacto"),
-                    "notas":     orig.get("notas"),
-                })
-                cambios += 1
-        if cambios:
-            st.success(f"✅ {cambios} contacto(s) actualizado(s).")
-            st.cache_data.clear()
-            st.rerun()
-        else:
-            st.info("No hay cambios.")
-
     with st.expander("➕ Añadir contacto manualmente"):
         with st.form("nuevo_contacto"):
             nc1, nc2 = st.columns(2)
             nombre_new   = nc1.text_input("Nombre del club *")
             deporte_new  = nc2.selectbox("Deporte", ["FUTBOL", "BALONCESTO", "BALONMANO", "VOLEIBOL", "HOCKEY PATINES"])
-            email_new    = nc1.text_input("Email")
+            email_new    = nc1.text_input("Email principal")
             telefono_new = nc2.text_input("Teléfono")
             web_new      = nc1.text_input("Web")
-            notas_new    = st.text_area("Notas", height=80)
+            notas_new    = st.text_area("Notas", height=60)
             submitted    = st.form_submit_button("Guardar", type="primary")
 
         if submitted:

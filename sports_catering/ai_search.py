@@ -18,6 +18,12 @@ _MODEL = os.environ.get("ATM_AI_MODEL", "gpt-4o")
 _WEB_SEARCH_TYPES = ["web_search", "web_search_preview"]
 _EMAIL_RE = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
 
+# Prefijos de emails que NO interesan (protección de datos, legal, etc.)
+_EMAIL_BLOCKLIST = re.compile(
+    r"^(dpd|dpo|lopd|rgpd|gdpr|protecciondatos|privacidad|legal|baja)@",
+    re.IGNORECASE,
+)
+
 
 def _get_client():
     api_key = os.environ.get("OPENAI_API_KEY")
@@ -53,7 +59,9 @@ def _build_prompt(team_name: str, city: str = "", sport: str = "") -> str:
         f"LinkedIn, web del club, redes sociales. Quiero su nombre completo, su email "
         f"si aparece, y su instagram personal si lo tiene.\n\n"
         f"IMPORTANTE: No inventes datos. Si no encuentras algo con certeza, pon null. "
-        f"Verifica que el nutricionista sigue siendo el actual (no uno de hace 3+ años).\n\n"
+        f"Verifica que el nutricionista sigue siendo el actual (no uno de hace 3+ años). "
+        f"EXCLUYE emails de protección de datos, DPD, LOPD, RGPD, DPO o similares: "
+        f"no me interesa dpd@, lopd@, rgpd@, dpo@, privacidad@ ni legal@.\n\n"
         f"Responde ÚNICAMENTE con este JSON exacto, sin texto adicional:\n"
         "{\n"
         '  "emails": ["email1@club.es", "email2@club.es"],\n'
@@ -103,19 +111,28 @@ def _call_openai(client, prompt: str) -> str:
 
 
 def _clean_emails(raw_emails) -> list[str]:
-    """Extrae emails válidos de una lista o string."""
+    """Extrae emails válidos, excluyendo los de protección de datos."""
     if not raw_emails:
         return []
     if isinstance(raw_emails, str):
-        return _EMAIL_RE.findall(raw_emails)
-    if isinstance(raw_emails, list):
-        result = []
+        candidates = _EMAIL_RE.findall(raw_emails)
+    elif isinstance(raw_emails, list):
+        candidates = []
         for item in raw_emails:
             if isinstance(item, str):
-                found = _EMAIL_RE.findall(item)
-                result.extend(found)
-        return list(dict.fromkeys(result))  # dedup preservando orden
-    return []
+                candidates.extend(_EMAIL_RE.findall(item))
+    else:
+        return []
+    seen = set()
+    result = []
+    for email in candidates:
+        local = email.split("@")[0].lower()
+        if _EMAIL_BLOCKLIST.match(email):
+            continue
+        if email.lower() not in seen:
+            seen.add(email.lower())
+            result.append(email)
+    return result
 
 
 def search_team_contact(team_name: str, city: str = "", sport: str = "") -> dict | None:

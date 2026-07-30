@@ -158,6 +158,12 @@ def marcar_verificado(nombre: str, verificado: bool = True):
     }).eq("nombre", nombre.upper().strip()).execute()
 
 
+def delete_contacto(nombre: str):
+    """Elimina un contacto por nombre."""
+    client = _get_client()
+    client.table("contactos").delete().eq("nombre", nombre.upper().strip()).execute()
+
+
 def get_contacto_por_nombre(nombre: str) -> dict | None:
     """
     Busca un contacto en Supabase. Primero por coincidencia exacta,
