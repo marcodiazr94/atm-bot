@@ -121,19 +121,29 @@ def upsert_contacto(contacto: dict) -> dict:
     if not nombre:
         raise ValueError("El contacto debe tener nombre.")
 
+    # emails_extra: lista de emails adicionales además del principal
+    emails_raw = contacto.get("emails") or []
+    emails_extra = None
+    if isinstance(emails_raw, list) and len(emails_raw) > 1:
+        emails_extra = ",".join(emails_raw[1:])
+
     row = {
-        "nombre":              nombre,
-        "deporte":             contacto.get("deporte") or None,
-        "email":               contacto.get("email") or None,
-        "telefono":            contacto.get("telefono") or None,
-        "contacto":            contacto.get("contacto") or None,
-        "web":                 contacto.get("web") or None,
-        "instagram":           contacto.get("instagram") or None,
-        "verificado":          bool(contacto.get("verificado", False)),
-        "fuente":              contacto.get("fuente") or "manual",
-        "confianza":           contacto.get("confianza") or None,
-        "notas":               contacto.get("notas") or None,
-        "ultima_actualizacion": datetime.now(timezone.utc).isoformat(),
+        "nombre":                   nombre,
+        "deporte":                  contacto.get("deporte") or None,
+        "email":                    contacto.get("email") or None,
+        "emails_extra":             emails_extra,
+        "telefono":                 contacto.get("telefono") or None,
+        "contacto":                 contacto.get("contacto") or None,
+        "web":                      contacto.get("web") or None,
+        "instagram":                contacto.get("instagram") or contacto.get("instagram_club") or None,
+        "verificado":               bool(contacto.get("verificado", False)),
+        "fuente":                   contacto.get("fuente") or "manual",
+        "confianza":                contacto.get("confianza") or None,
+        "notas":                    contacto.get("notas") or None,
+        "nutricionista":            contacto.get("nutricionista_nombre") or None,
+        "nutricionista_email":      contacto.get("nutricionista_email") or None,
+        "nutricionista_instagram":  contacto.get("nutricionista_instagram") or None,
+        "ultima_actualizacion":     datetime.now(timezone.utc).isoformat(),
     }
     resp = client.table("contactos").upsert(row, on_conflict="nombre").execute()
     return resp.data[0] if resp.data else row

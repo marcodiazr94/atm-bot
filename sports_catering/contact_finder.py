@@ -69,7 +69,12 @@ def find_contact(team_name: str, known_contacts: dict = None, use_ai: bool = Tru
             # Guardar en Supabase automáticamente (verificado=False)
             try:
                 from sports_catering import db
-                db.upsert_contacto({**result, "fuente": "ai", "deporte": sport or None})
+                db.upsert_contacto({
+                    **result,
+                    "nombre":   team_name,
+                    "fuente":   "ai",
+                    "deporte":  sport or None,
+                })
             except Exception:
                 pass
             return result

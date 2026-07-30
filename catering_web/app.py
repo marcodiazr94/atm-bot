@@ -141,56 +141,108 @@ def _tarjeta_partido(lead: dict):
     fecha = lead.get("date") or lead.get("fecha")
     fecha_str = _format_date_es(fecha) if isinstance(fecha, datetime) else str(fecha or "")
     status = lead.get("status", "missing")
+    rival = lead.get("rival", "")
+    verificado = lead.get("verificado", False)
 
-    origen = {
-        "found_exact":   "✓ En base de datos",
-        "found_partial": "✓ En base de datos",
-        "found_fuzzy":   "✓ En base de datos",
+    badge = {
+        "found_exact":   "✅ Verificado" if verificado else "📋 En base de datos",
+        "found_partial": "✅ Verificado" if verificado else "📋 En base de datos",
+        "found_fuzzy":   "✅ Verificado" if verificado else "📋 En base de datos",
         "found_ai":      f"🤖 IA · confianza {lead.get('confianza', 'media')}",
         "missing":       "⚠️ Sin contacto",
     }.get(status, status)
 
+    # Recopilar todos los emails disponibles
+    emails = lead.get("emails") or []
+    if not emails and lead.get("email"):
+        emails = [lead["email"]]
+    if lead.get("emails_extra"):
+        for e in lead["emails_extra"].split(","):
+            e = e.strip()
+            if e and e not in emails:
+                emails.append(e)
+
     with st.container(border=True):
+        # Cabecera
         c1, c2 = st.columns([3, 1])
         with c1:
-            st.markdown(f"**{lead.get('equipo','')} vs {lead.get('rival','')}**  \n"
+            st.markdown(f"**{lead.get('equipo','')} vs {rival}**  \n"
                         f"`{lead.get('deporte','')}` · 📅 {fecha_str} {_hora_str(lead.get('hora'))} · "
                         f"📍 {lead.get('lugar') or lead.get('ciudad','')}")
         with c2:
-            st.markdown(f"<div style='text-align:right'>{origen}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='text-align:right'>{badge}</div>", unsafe_allow_html=True)
 
-        datos = []
-        if lead.get("email"):
-            datos.append(f"✉️ {lead['email']}")
+        if status == "missing":
+            q = urllib.parse.quote_plus(f"{rival} club deportivo email contacto nutricionista")
+            st.link_button("🔍 Buscar en Google", f"https://www.google.com/search?q={q}")
+            return
+
+        # ── Contactos del club ──────────────────────────────────────────
+        st.markdown("**Contactos del club**")
+
+        info_linea = []
         if lead.get("telefono"):
-            datos.append(f"📞 {lead['telefono']}")
+            info_linea.append(f"📞 {lead['telefono']}")
         if lead.get("web"):
-            datos.append(f"🌐 [web]({lead['web']})")
-        if datos:
-            st.markdown(" · ".join(datos))
+            info_linea.append(f"🌐 [{lead['web']}]({lead['web']})")
+        if lead.get("instagram") or lead.get("instagram_club"):
+            ig = lead.get("instagram") or lead.get("instagram_club")
+            info_linea.append(f"📸 {ig}")
+        if info_linea:
+            st.caption(" · ".join(info_linea))
 
-        b1, b2, b3, b4, _ = st.columns([1.2, 1.2, 1.2, 1.5, 2])
-        if lead.get("email"):
-            b1.link_button("✉️ Enviar email", _mailto(lead))
+        if emails:
+            for email in emails:
+                col_email, col_btn = st.columns([3, 1])
+                col_email.markdown(f"✉️ `{email}`")
+                mailto = urllib.parse.urlencode({"subject": _build_subject(lead), "body": EMAIL_TEMPLATE})
+                col_btn.link_button("Enviar", f"mailto:{urllib.parse.quote(email)}?{mailto}",
+                                    key=f"mail_{rival}_{email}")
+
         wa = _wa_link(lead.get("telefono")) if lead.get("telefono") else None
         if wa:
-            b2.link_button("💬 WhatsApp", wa)
-        if status == "missing":
-            q = urllib.parse.quote_plus(f"{lead.get('rival','')} club contacto email")
-            b3.link_button("🔍 Buscar en Google", f"https://www.google.com/search?q={q}")
-        if status != "missing" and lead.get("nombre"):
-            verificado = lead.get("verificado", False)
-            if not verificado and b4.button("☑️ Verificar contacto", key=f"ver_{lead.get('rival','')}"):
+            st.link_button("💬 WhatsApp", wa)
+
+        # ── Nutricionista ───────────────────────────────────────────────
+        nutri_nombre = lead.get("nutricionista_nombre") or lead.get("nutricionista")
+        nutri_email  = lead.get("nutricionista_email")
+        nutri_ig     = lead.get("nutricionista_instagram")
+        nutri_ok     = lead.get("nutricionista_confirmado", False)
+
+        if nutri_nombre or nutri_email or nutri_ig:
+            st.divider()
+            confirmado_txt = " ✓ confirmado" if nutri_ok else " (sin confirmar)"
+            st.markdown(f"**Nutricionista/Dietista**{confirmado_txt}")
+            nutri_linea = []
+            if nutri_nombre:
+                nutri_linea.append(f"👤 {nutri_nombre}")
+            if nutri_ig:
+                nutri_linea.append(f"📸 {nutri_ig}")
+            if nutri_linea:
+                st.caption(" · ".join(nutri_linea))
+            if nutri_email:
+                col_ne, col_nb = st.columns([3, 1])
+                col_ne.markdown(f"✉️ `{nutri_email}`")
+                mailto_n = urllib.parse.urlencode({"subject": _build_subject(lead), "body": EMAIL_TEMPLATE})
+                col_nb.link_button("Enviar", f"mailto:{urllib.parse.quote(nutri_email)}?{mailto_n}",
+                                   key=f"mail_nutri_{rival}")
+
+        # ── Verificar + correo ──────────────────────────────────────────
+        st.divider()
+        col_v, col_exp = st.columns([1, 3])
+        if not verificado and lead.get("nombre"):
+            if col_v.button("☑️ Verificar", key=f"ver_{rival}"):
                 try:
                     db.marcar_verificado(lead["nombre"])
-                    st.toast(f"Contacto de {lead.get('rival','')} marcado como verificado.")
+                    st.toast(f"Contacto de {rival} marcado como verificado.")
                     st.rerun()
                 except RuntimeError as e:
                     st.warning(str(e))
 
-        with st.expander("Ver correo redactado"):
-            st.text_input("Asunto", value=_build_subject(lead), key=f"subj_{id(lead)}")
-            st.text_area("Cuerpo", value=EMAIL_TEMPLATE, height=220, key=f"body_{id(lead)}")
+        with col_exp:
+            with st.expander("Ver correo redactado"):
+                st.text_input("Asunto", value=_build_subject(lead), key=f"subj_{id(lead)}")
+                st.text_area("Cuerpo", value=EMAIL_TEMPLATE, height=200, key=f"body_{id(lead)}")
 
 
 # ─── Pantalla: Calendario de temporada ────────────────────────────────────────
