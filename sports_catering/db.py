@@ -164,10 +164,16 @@ def delete_contacto(nombre: str):
     client.table("contactos").delete().eq("nombre", nombre.upper().strip()).execute()
 
 
+def _norm(s: str) -> str:
+    """Normaliza a mayúsculas sin acentos para comparaciones tolerantes."""
+    import unicodedata
+    return unicodedata.normalize("NFD", s.upper().strip()).encode("ascii", "ignore").decode()
+
+
 def get_contacto_por_nombre(nombre: str) -> dict | None:
     """
-    Busca un contacto en Supabase. Primero por coincidencia exacta,
-    luego por coincidencia parcial (ILIKE). Devuelve None si no existe.
+    Busca un contacto en Supabase con tolerancia a tildes y variaciones de nombre.
+    Orden: exacto → ILIKE → fuzzy en Python (difflib sobre todos los contactos).
     """
     if not nombre:
         return None
@@ -179,4 +185,20 @@ def get_contacto_por_nombre(nombre: str) -> dict | None:
         return resp.data[0]
 
     resp = client.table("contactos").select("*").ilike("nombre", f"%{key}%").limit(1).execute()
-    return resp.data[0] if resp.data else None
+    if resp.data:
+        return resp.data[0]
+
+    # Fuzzy matching en Python con normalización de acentos
+    import difflib
+    todos = (client.table("contactos").select("id,nombre").execute().data or [])
+    if not todos:
+        return None
+    key_norm = _norm(nombre)
+    candidatos = {c["nombre"]: _norm(c["nombre"]) for c in todos}
+    matches = difflib.get_close_matches(key_norm, list(candidatos.values()), n=1, cutoff=0.72)
+    if matches:
+        nombre_orig = next(n for n, v in candidatos.items() if v == matches[0])
+        resp = client.table("contactos").select("*").eq("nombre", nombre_orig).limit(1).execute()
+        if resp.data:
+            return resp.data[0]
+    return None
