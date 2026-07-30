@@ -14,6 +14,8 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+import importlib
+
 import pandas as pd
 import streamlit as st
 
@@ -28,6 +30,7 @@ except Exception:
 
 from catering_web.auth import logout_button, require_login
 from sports_catering import db, engine
+importlib.reload(db)   # fuerza recarga para que Streamlit hot-reload recoja cambios
 from sports_catering.config import load_config
 from sports_catering.contact_finder import find_contact
 from sports_catering.html_report import (
@@ -460,7 +463,9 @@ def pantalla_contactos():
                 with h2:
                     if st.button("🗑️ Borrar", key=f"del_{nombre}"):
                         try:
-                            db.delete_contacto(nombre)
+                            db._get_client().table("contactos").delete().eq(
+                                "nombre", nombre.upper().strip()
+                            ).execute()
                             st.toast(f"Contacto '{nombre}' eliminado.")
                             st.rerun()
                         except Exception as e:
