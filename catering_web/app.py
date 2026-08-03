@@ -234,11 +234,11 @@ def pantalla_partidos():
 
     col1, col2, col3 = st.columns([1.3, 1.3, 1.3])
     with col1:
-        d_ini = st.number_input("Desde (días)", min_value=0, max_value=120, value=int(ventana[0]))
+        d_ini = st.number_input("Desde (días)", min_value=0, max_value=120, value=1)
     with col2:
-        d_fin = st.number_input("Hasta (días)", min_value=1, max_value=180, value=int(ventana[1]))
+        d_fin = st.number_input("Hasta (días)", min_value=1, max_value=180, value=30)
     with col3:
-        usar_ia = st.toggle("Buscar contactos con IA", value=True,
+        usar_ia = st.toggle("Buscar contactos con IA", value=False,
                             help="Si el equipo no está en la base de datos, lo busca en Internet.")
 
     if st.button("🔍 Buscar partidos", type="primary"):
