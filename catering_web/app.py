@@ -382,7 +382,7 @@ def _tarjeta_partido(lead: dict):
                 )
                 col_btn.link_button(
                     "Enviar", f"mailto:{urllib.parse.quote(email)}?{mailto_q}",
-                    key=f"mail_{rival}_{email}",
+                    key=f"mail_{partido_id}_{email}",
                 )
 
         wa = _wa_link(lead.get("telefono")) if lead.get("telefono") else None
@@ -413,19 +413,19 @@ def _tarjeta_partido(lead: dict):
                 )
                 col_nb.link_button(
                     "Enviar", f"mailto:{urllib.parse.quote(nutri_email)}?{mailto_n}",
-                    key=f"mail_nutri_{rival}",
+                    key=f"mail_nutri_{partido_id}",
                 )
 
         # ── Buscar más contactos ──────────────────────────────────────────
         if status != "found_ai" and (len(emails) <= 1 or not (nutri_nombre or nutri_email)):
-            if st.button("🔄 Buscar más contactos con IA", key=f"rebus_{rival}"):
+            if st.button("🔄 Buscar más contactos con IA", key=f"rebus_{partido_id}"):
                 with st.spinner(f"Buscando más información sobre {rival}..."):
                     ai = find_contact(rival, use_ai=True,
                                       city=lead.get("ciudad", ""), sport=lead.get("deporte", ""))
-                st.session_state[f"extra_{rival}"] = ai
+                st.session_state[f"extra_{partido_id}"] = ai
                 st.rerun()
 
-        extra = st.session_state.get(f"extra_{rival}")
+        extra = st.session_state.get(f"extra_{partido_id}")
         if extra and extra.get("status") == "found_ai":
             new_emails = extra.get("emails") or ([extra["email"]] if extra.get("email") else [])
             for em in new_emails:
@@ -437,18 +437,18 @@ def _tarjeta_partido(lead: dict):
                     )
                     col_b.link_button(
                         "Enviar", f"mailto:{urllib.parse.quote(em)}?{mailto_x}",
-                        key=f"mail_extra_{rival}_{em}",
+                        key=f"mail_extra_{partido_id}_{em}",
                     )
 
         # ── C: Email editable ─────────────────────────────────────────────
         st.divider()
         with st.expander("✉️ Personalizar email antes de enviar"):
             asunto_edit = st.text_input("Asunto", value=_build_subject(lead),
-                                        key=f"subj_{rival}")
+                                        key=f"subj_{partido_id}")
             cuerpo_edit = st.text_area("Cuerpo", value=EMAIL_TEMPLATE, height=220,
-                                       key=f"body_{rival}")
+                                       key=f"body_{partido_id}")
             if emails:
-                dest = st.selectbox("Destinatario", emails, key=f"dest_{rival}")
+                dest = st.selectbox("Destinatario", emails, key=f"dest_{partido_id}")
                 mailto_custom = urllib.parse.urlencode(
                     {"subject": asunto_edit, "body": cuerpo_edit}
                 )
@@ -460,7 +460,7 @@ def _tarjeta_partido(lead: dict):
 
         # ── Verificar contacto ─────────────────────────────────────────────
         if not verificado and lead.get("nombre"):
-            if st.button("☑️ Marcar contacto como verificado", key=f"ver_{rival}"):
+            if st.button("☑️ Marcar contacto como verificado", key=f"ver_{partido_id}"):
                 try:
                     db.marcar_verificado(lead["nombre"])
                     st.toast(f"Contacto de {rival} marcado como verificado.")
