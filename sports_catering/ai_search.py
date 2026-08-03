@@ -46,35 +46,37 @@ def _build_prompt(team_name: str, city: str = "", sport: str = "") -> str:
 
     return (
         f"Necesito información de contacto detallada del club deportivo español "
-        f'"{team_name}"{ctx}. Haz búsquedas exhaustivas en su web oficial, redes '
-        f"sociales, noticias y fuentes de la federación.\n\n"
-        f"Busca específicamente:\n"
-        f"1. EMAILS DEL CLUB: recepción, secretaría, comunicación, dirección deportiva, "
-        f"cualquier email oficial. Mínimo intenta encontrar 3 emails distintos.\n"
-        f"2. INSTAGRAM oficial del club (formato @handle).\n"
-        f"3. TELÉFONO de contacto principal.\n"
-        f"4. WEB oficial.\n"
-        f"5. NUTRICIONISTA O DIETISTA del primer equipo: busca quién es el nutricionista "
-        f"o dietista deportivo ACTUAL (temporada 2025-26 o 2026-27). Busca en noticias, "
-        f"LinkedIn, web del club, redes sociales. Quiero su nombre completo, su email "
-        f"si aparece, y su instagram personal si lo tiene.\n\n"
-        f"IMPORTANTE: No inventes datos. Si no encuentras algo con certeza, pon null. "
-        f"Verifica que el nutricionista sigue siendo el actual (no uno de hace 3+ años). "
-        f"EXCLUYE emails de protección de datos, DPD, LOPD, RGPD, DPO o similares: "
-        f"no me interesa dpd@, lopd@, rgpd@, dpo@, privacidad@ ni legal@.\n\n"
+        f'"{team_name}"{ctx}.\n\n'
+        f"INSTRUCCIONES PASO A PASO:\n"
+        f"PASO 1 — Encuentra la web oficial del club y accede directamente a su página "
+        f"de contacto (prueba /contacto, /contact, /club/contacto, /el-club/contacto). "
+        f"Lee TODA la página y extrae cada dirección de email que aparezca, sin importar "
+        f"el departamento (secretaría, comunicación, prensa, dirección deportiva, "
+        f"administración, recepción, etc.).\n"
+        f"PASO 2 — Busca emails adicionales en otras páginas del club: staff, directiva, "
+        f"área deportiva, noticias recientes.\n"
+        f"PASO 3 — Busca el NUTRICIONISTA O DIETISTA DEPORTIVO ACTUAL (temporada 2025-26 "
+        f"o 2026-27) del primer equipo. Consulta noticias, LinkedIn, web del club, redes "
+        f"sociales. Quiero nombre completo, email si aparece, e instagram personal.\n\n"
+        f"REGLAS:\n"
+        f"- Devuelve TODOS los emails encontrados (mínimo 3 si existen).\n"
+        f"- EXCLUYE emails de: dpd@, dpo@, lopd@, rgpd@, protecciondatos@, privacidad@, "
+        f"legal@, baja@. Estos son de protección de datos y no sirven.\n"
+        f"- No inventes datos. Si no encuentras algo, pon null.\n"
+        f"- Verifica que el nutricionista sea el actual, no uno de hace años.\n\n"
         f"Responde ÚNICAMENTE con este JSON exacto, sin texto adicional:\n"
-        "{\n"
+        "{{\n"
         '  "emails": ["email1@club.es", "email2@club.es"],\n'
-        '  "telefono": string|null,\n'
-        '  "web": string|null,\n'
-        '  "instagram_club": string|null,\n'
-        '  "nutricionista_nombre": string|null,\n'
-        '  "nutricionista_email": string|null,\n'
-        '  "nutricionista_instagram": string|null,\n'
-        '  "nutricionista_confirmado": true|false,\n'
-        '  "confianza": "alta"|"media"|"baja",\n'
-        '  "notas": string|null\n'
-        "}"
+        '  "telefono": "string o null",\n'
+        '  "web": "string o null",\n'
+        '  "instagram_club": "string o null",\n'
+        '  "nutricionista_nombre": "string o null",\n'
+        '  "nutricionista_email": "string o null",\n'
+        '  "nutricionista_instagram": "string o null",\n'
+        '  "nutricionista_confirmado": true,\n'
+        '  "confianza": "alta",\n'
+        '  "notas": "string o null"\n'
+        "}}"
     )
 
 

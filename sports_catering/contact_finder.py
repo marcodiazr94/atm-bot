@@ -55,25 +55,33 @@ def find_contact(team_name: str, known_contacts: dict = None, use_ai: bool = Tru
     if use_ai:
         ai = ai_search.search_team_contact(team_name, city=city, sport=sport)
         if ai and (ai.get("email") or ai.get("telefono")):
+            emails = ai.get("emails") or ([ai["email"]] if ai.get("email") else [])
             result = {
-                "nombre":    team_name,
-                "telefono":  ai.get("telefono"),
-                "email":     ai.get("email"),
-                "contacto":  ai.get("contacto"),
-                "web":       ai.get("web"),
-                "instagram": ai.get("instagram"),
-                "confianza": ai.get("confianza"),
-                "notas":     ai.get("notas"),
-                "status":    "found_ai",
+                "nombre":                   team_name,
+                "telefono":                 ai.get("telefono"),
+                "email":                    emails[0] if emails else None,
+                "emails":                   emails,
+                "emails_extra":             ",".join(emails[1:]) if len(emails) > 1 else None,
+                "contacto":                 ai.get("contacto"),
+                "web":                      ai.get("web"),
+                "instagram":                ai.get("instagram") or ai.get("instagram_club"),
+                "instagram_club":           ai.get("instagram_club"),
+                "nutricionista_nombre":     ai.get("nutricionista_nombre"),
+                "nutricionista_email":      ai.get("nutricionista_email"),
+                "nutricionista_instagram":  ai.get("nutricionista_instagram"),
+                "nutricionista_confirmado": ai.get("nutricionista_confirmado", False),
+                "confianza":                ai.get("confianza"),
+                "notas":                    ai.get("notas"),
+                "status":                   "found_ai",
             }
             # Guardar en Supabase automáticamente (verificado=False)
             try:
                 from sports_catering import db
                 db.upsert_contacto({
                     **result,
-                    "nombre":   team_name,
-                    "fuente":   "ai",
-                    "deporte":  sport or None,
+                    "nombre":  team_name,
+                    "fuente":  "ai",
+                    "deporte": sport or None,
                 })
             except Exception:
                 pass
