@@ -942,10 +942,10 @@ def pantalla_calendario():
         st.info("No hay partidos cargados. Pulsa **Actualizar desde calendarios** para importar la temporada.")
         return
 
-    st.caption(f"{len(partidos)} partidos encontrados")
+    st.caption(f"{len(partidos)} partidos encontrados · Cambia el estado directamente en la tabla y pulsa **Guardar cambios**.")
     df = pd.DataFrame(partidos)
+    df["_id"]   = df["id"]
     df["Fecha"] = pd.to_datetime(df["fecha"]).dt.strftime("%d/%m/%Y")
-    cols_show = ["Fecha", "Equipo local", "Rival (visitante)", "Estado", "Deporte", "Ciudad", "Pabellón"]
     df = df.rename(columns={
         "equipo":  "Equipo local",
         "rival":   "Rival (visitante)",
@@ -955,8 +955,42 @@ def pantalla_calendario():
         "estado":  "Estado",
     })
     df["Estado"] = df["Estado"].map(ESTADOS_DISPLAY).fillna("⬜ Sin contactar")
+
+    cols_show    = ["Fecha", "Equipo local", "Rival (visitante)", "Estado", "Deporte", "Ciudad", "Pabellón"]
     existing_cols = [c for c in cols_show if c in df.columns]
-    st.dataframe(df[existing_cols], use_container_width=True, hide_index=True)
+
+    edited = st.data_editor(
+        df[existing_cols],
+        column_config={
+            "Estado": st.column_config.SelectboxColumn(
+                "Estado",
+                options=ESTADOS_LISTA,
+                required=True,
+            )
+        },
+        use_container_width=True,
+        hide_index=True,
+        key="cal_editor",
+    )
+
+    if st.button("💾 Guardar cambios de estado", type="primary"):
+        cambios = 0
+        for i in range(len(df)):
+            estado_orig = df.iloc[i]["Estado"]
+            estado_nuevo = edited.iloc[i]["Estado"]
+            if estado_orig != estado_nuevo:
+                pid      = df.iloc[i]["_id"]
+                nuevo_db = ESTADOS_DB.get(estado_nuevo, "sin_contactar")
+                try:
+                    db.update_partido(pid, estado=nuevo_db)
+                    cambios += 1
+                except Exception as e:
+                    st.error(f"Error guardando fila {i}: {e}")
+        if cambios:
+            st.toast(f"✅ {cambios} estado(s) actualizados.")
+            st.rerun()
+        else:
+            st.toast("Sin cambios que guardar.")
 
 
 # ── Pantalla: Contactos ────────────────────────────────────────────────────────
