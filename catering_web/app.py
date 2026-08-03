@@ -320,39 +320,35 @@ def _tarjeta_partido(lead: dict):
 
     with st.container(border=True):
 
-        # ── Cabecera ─────────────────────────────────────────────────────
-        c1, c2 = st.columns([3, 1])
-        with c1:
-            st.markdown(
-                f"**{urgencia}{lead.get('equipo','')} vs {rival}**  \n"
-                f"`{lead.get('deporte','')}` · 📅 {fecha_str} {_hora_str(lead.get('hora'))} · "
-                f"📍 {lead.get('lugar') or lead.get('ciudad','')}"
-            )
-        with c2:
-            st.markdown(f"<div style='text-align:right'>{badge}</div>", unsafe_allow_html=True)
+        # ── Fila 1: partido info + badge ──────────────────────────────────
+        hora_txt = f" · 🕐 {_hora_str(lead.get('hora'))}" if lead.get("hora") else ""
+        lugar_txt = lead.get("lugar") or lead.get("ciudad", "")
+        r1, r2 = st.columns([4, 1])
+        r1.markdown(
+            f"**{urgencia}{lead.get('equipo','')} vs {rival}** · "
+            f"`{lead.get('deporte','')}` · 📅 {fecha_str}{hora_txt} · 📍 {lugar_txt}"
+        )
+        r2.markdown(f"<div style='text-align:right;font-size:12px'>{badge}</div>",
+                    unsafe_allow_html=True)
 
-        # ── A: Estado del contacto ────────────────────────────────────────
+        # ── Fila 2: estado ────────────────────────────────────────────────
         if partido_id:
             estado_actual_db  = lead.get("estado") or "sin_contactar"
             estado_actual_txt = ESTADOS_DISPLAY.get(estado_actual_db, "⬜ Sin contactar")
             col_est, col_save = st.columns([4, 1])
-            with col_est:
-                nuevo_estado_txt = st.selectbox(
-                    "Estado",
-                    ESTADOS_LISTA,
-                    index=ESTADOS_LISTA.index(estado_actual_txt) if estado_actual_txt in ESTADOS_LISTA else 0,
-                    key=f"est_{partido_id}",
-                    label_visibility="collapsed",
-                )
-            with col_save:
-                if st.button("Guardar", key=f"save_est_{partido_id}", use_container_width=True):
-                    nuevo_db = ESTADOS_DB.get(nuevo_estado_txt, "sin_contactar")
-                    try:
-                        db.update_partido(partido_id, estado=nuevo_db)
-                        lead["estado"] = nuevo_db
-                        st.toast(f"Estado: {nuevo_estado_txt}")
-                    except Exception as e:
-                        st.error(str(e))
+            nuevo_estado_txt = col_est.selectbox(
+                "Estado", ESTADOS_LISTA,
+                index=ESTADOS_LISTA.index(estado_actual_txt) if estado_actual_txt in ESTADOS_LISTA else 0,
+                key=f"est_{partido_id}", label_visibility="collapsed",
+            )
+            if col_save.button("Guardar", key=f"save_est_{partido_id}", use_container_width=True):
+                nuevo_db = ESTADOS_DB.get(nuevo_estado_txt, "sin_contactar")
+                try:
+                    db.update_partido(partido_id, estado=nuevo_db)
+                    lead["estado"] = nuevo_db
+                    st.toast(f"Estado: {nuevo_estado_txt}")
+                except Exception as e:
+                    st.error(str(e))
 
         if status == "missing":
             q = urllib.parse.quote_plus(f"{rival} club deportivo email contacto")
@@ -360,71 +356,68 @@ def _tarjeta_partido(lead: dict):
             _widget_notas(lead, partido_id)
             return
 
-        # ── Contactos ─────────────────────────────────────────────────────
-        info_linea = []
-        if lead.get("telefono"):
-            info_linea.append(f"📞 {lead['telefono']}")
-        if lead.get("web"):
-            info_linea.append(f"🌐 [{lead['web']}]({lead['web']})")
-        if lead.get("instagram") or lead.get("instagram_club"):
-            ig = lead.get("instagram") or lead.get("instagram_club")
-            info_linea.append(f"📸 {ig}")
-        if info_linea:
-            st.caption(" · ".join(info_linea))
-
+        # ── Fila 3: tel · web · email · [Enviar] ─────────────────────────
+        tel = lead.get("telefono", "")
+        web = lead.get("web", "")
+        ig  = lead.get("instagram") or lead.get("instagram_club", "")
+        wa  = _wa_link(tel) if tel else None
         mailto_q = urllib.parse.urlencode({"subject": _build_subject(lead), "body": EMAIL_TEMPLATE})
-        wa = _wa_link(lead.get("telefono")) if lead.get("telefono") else None
 
-        all_emails = list(emails)
         extra = st.session_state.get(f"extra_{partido_id}")
+        all_emails = list(emails)
         if extra and extra.get("status") == "found_ai":
             for em in (extra.get("emails") or ([extra["email"]] if extra.get("email") else [])):
                 if em not in all_emails:
                     all_emails.append(em)
 
-        for email in all_emails:
-            col_email, col_btn = st.columns([3, 1])
-            col_email.markdown(f"✉️ `{email}`")
-            col_btn.link_button("Enviar", f"mailto:{urllib.parse.quote(email)}?{mailto_q}",
-                                key=f"mail_{partido_id}_{email}")
+        info_parts = []
+        if tel: info_parts.append(f"📞 {tel}")
+        if web: info_parts.append(f"🌐 [{web}]({web})")
+        if ig:  info_parts.append(f"📸 {ig}")
 
-        # Nutricionista y WhatsApp en una línea compacta
+        for i, email in enumerate(all_emails):
+            ci, ce, cb = st.columns([2, 2, 1])
+            if i == 0 and info_parts:
+                ci.caption(" · ".join(info_parts))
+            ce.markdown(f"✉️ `{email}`")
+            cb.link_button("Enviar", f"mailto:{urllib.parse.quote(email)}?{mailto_q}",
+                           key=f"mail_{partido_id}_{email}")
+        if not all_emails and info_parts:
+            st.caption(" · ".join(info_parts))
+
+        # ── Nutricionista (si existe) ─────────────────────────────────────
         nutri_nombre = lead.get("nutricionista_nombre") or lead.get("nutricionista")
         nutri_email  = lead.get("nutricionista_email")
         nutri_ig     = lead.get("nutricionista_instagram")
         nutri_ok     = lead.get("nutricionista_confirmado", False)
 
-        row_btns = []
+        if nutri_nombre or nutri_email or nutri_ig:
+            nutri_parts = []
+            if nutri_nombre: nutri_parts.append(f"👤 {nutri_nombre}")
+            if nutri_ig:     nutri_parts.append(f"📸 {nutri_ig}")
+            label = f"Nutricionista{' ✓' if nutri_ok else ''}: " + " · ".join(nutri_parts)
+            if nutri_email:
+                ni, ne, nb = st.columns([2, 2, 1])
+                ni.caption(label)
+                ne.markdown(f"✉️ `{nutri_email}`")
+                mailto_n = urllib.parse.urlencode({"subject": _build_subject(lead), "body": EMAIL_TEMPLATE})
+                nb.link_button("Enviar", f"mailto:{urllib.parse.quote(nutri_email)}?{mailto_n}",
+                               key=f"mail_nutri_{partido_id}")
+            else:
+                st.caption(label)
+
+        # ── Fila 4: botones de acción ─────────────────────────────────────
+        ba1, ba2, ba3, ba4 = st.columns(4)
         if wa:
-            row_btns.append(("💬 WhatsApp", wa, f"wa_{partido_id}"))
-        if nutri_email:
-            mailto_n = urllib.parse.urlencode({"subject": _build_subject(lead), "body": EMAIL_TEMPLATE})
-            row_btns.append(("✉️ Nutricionista", f"mailto:{urllib.parse.quote(nutri_email)}?{mailto_n}",
-                             f"mail_nutri_{partido_id}"))
-
-        if row_btns:
-            cols = st.columns(len(row_btns) + 2)
-            for idx, (lbl, url, key) in enumerate(row_btns):
-                cols[idx].link_button(lbl, url, key=key)
-
-        if nutri_nombre or nutri_ig:
-            parts = []
-            label = f"Nutricionista{' ✓' if nutri_ok else ''}: "
-            if nutri_nombre: parts.append(f"👤 {nutri_nombre}")
-            if nutri_ig:     parts.append(f"📸 {nutri_ig}")
-            if nutri_email:  parts.append(f"✉️ {nutri_email}")
-            st.caption(label + " · ".join(parts))
-
-        # ── Buscar más / Verificar / Email personalizado / Notas ──────────
-        acc1, acc2, acc3 = st.columns([1, 1, 2])
-        if acc1.button("🔄 Más emails con IA", key=f"rebus_{partido_id}"):
-            with st.spinner(f"Buscando en {rival}..."):
+            ba1.link_button("💬 WhatsApp", wa, key=f"wa_{partido_id}")
+        if ba2.button("🔄 Más emails con IA", key=f"rebus_{partido_id}", use_container_width=True):
+            with st.spinner(f"Buscando {rival}..."):
                 ai = find_contact(rival, use_ai=True,
                                   city=lead.get("ciudad", ""), sport=lead.get("deporte", ""))
             st.session_state[f"extra_{partido_id}"] = ai
             st.rerun()
         if not verificado and lead.get("nombre"):
-            if acc2.button("☑️ Verificar", key=f"ver_{partido_id}"):
+            if ba3.button("☑️ Verificar", key=f"ver_{partido_id}", use_container_width=True):
                 try:
                     db.marcar_verificado(lead["nombre"])
                     st.toast(f"Contacto de {rival} verificado.")
@@ -432,6 +425,7 @@ def _tarjeta_partido(lead: dict):
                 except Exception as e:
                     st.warning(str(e))
 
+        # ── Expander: email personalizado + notas ─────────────────────────
         with st.expander("✉️ Personalizar email · 📝 Notas"):
             asunto_edit = st.text_input("Asunto", value=_build_subject(lead),
                                         key=f"subj_{partido_id}")
@@ -444,7 +438,7 @@ def _tarjeta_partido(lead: dict):
                                f"mailto:{urllib.parse.quote(dest)}?{mailto_custom}",
                                type="primary", use_container_width=True)
             notas_actuales = lead.get("notas_partido") or ""
-            notas_nuevas = st.text_area("📝 Notas del partido", value=notas_actuales, height=68,
+            notas_nuevas = st.text_area("📝 Notas", value=notas_actuales, height=68,
                                         placeholder="Ej: prefieren menú sin gluten · hora de entrega...",
                                         key=f"notas_{partido_id}", label_visibility="visible")
             if st.button("Guardar notas", key=f"save_notas_{partido_id}"):
