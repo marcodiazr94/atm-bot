@@ -360,8 +360,7 @@ def _tarjeta_partido(lead: dict):
             _widget_notas(lead, partido_id)
             return
 
-        # ── Contactos del club ────────────────────────────────────────────
-        st.markdown("**Contactos del club**")
+        # ── Contactos ─────────────────────────────────────────────────────
         info_linea = []
         if lead.get("telefono"):
             info_linea.append(f"📞 {lead['telefono']}")
@@ -373,103 +372,88 @@ def _tarjeta_partido(lead: dict):
         if info_linea:
             st.caption(" · ".join(info_linea))
 
-        if emails:
-            for email in emails:
-                col_email, col_btn = st.columns([3, 1])
-                col_email.markdown(f"✉️ `{email}`")
-                mailto_q = urllib.parse.urlencode(
-                    {"subject": _build_subject(lead), "body": EMAIL_TEMPLATE}
-                )
-                col_btn.link_button(
-                    "Enviar", f"mailto:{urllib.parse.quote(email)}?{mailto_q}",
-                    key=f"mail_{partido_id}_{email}",
-                )
-
+        mailto_q = urllib.parse.urlencode({"subject": _build_subject(lead), "body": EMAIL_TEMPLATE})
         wa = _wa_link(lead.get("telefono")) if lead.get("telefono") else None
-        if wa:
-            st.link_button("💬 WhatsApp", wa)
 
-        # ── Nutricionista ────────────────────────────────────────────────
+        all_emails = list(emails)
+        extra = st.session_state.get(f"extra_{partido_id}")
+        if extra and extra.get("status") == "found_ai":
+            for em in (extra.get("emails") or ([extra["email"]] if extra.get("email") else [])):
+                if em not in all_emails:
+                    all_emails.append(em)
+
+        for email in all_emails:
+            col_email, col_btn = st.columns([3, 1])
+            col_email.markdown(f"✉️ `{email}`")
+            col_btn.link_button("Enviar", f"mailto:{urllib.parse.quote(email)}?{mailto_q}",
+                                key=f"mail_{partido_id}_{email}")
+
+        # Nutricionista y WhatsApp en una línea compacta
         nutri_nombre = lead.get("nutricionista_nombre") or lead.get("nutricionista")
         nutri_email  = lead.get("nutricionista_email")
         nutri_ig     = lead.get("nutricionista_instagram")
         nutri_ok     = lead.get("nutricionista_confirmado", False)
 
-        if nutri_nombre or nutri_email or nutri_ig:
-            st.divider()
-            st.markdown(f"**Nutricionista/Dietista**{' ✓' if nutri_ok else ' (sin confirmar)'}")
-            nutri_linea = []
-            if nutri_nombre:
-                nutri_linea.append(f"👤 {nutri_nombre}")
-            if nutri_ig:
-                nutri_linea.append(f"📸 {nutri_ig}")
-            if nutri_linea:
-                st.caption(" · ".join(nutri_linea))
-            if nutri_email:
-                col_ne, col_nb = st.columns([3, 1])
-                col_ne.markdown(f"✉️ `{nutri_email}`")
-                mailto_n = urllib.parse.urlencode(
-                    {"subject": _build_subject(lead), "body": EMAIL_TEMPLATE}
-                )
-                col_nb.link_button(
-                    "Enviar", f"mailto:{urllib.parse.quote(nutri_email)}?{mailto_n}",
-                    key=f"mail_nutri_{partido_id}",
-                )
+        row_btns = []
+        if wa:
+            row_btns.append(("💬 WhatsApp", wa, f"wa_{partido_id}"))
+        if nutri_email:
+            mailto_n = urllib.parse.urlencode({"subject": _build_subject(lead), "body": EMAIL_TEMPLATE})
+            row_btns.append(("✉️ Nutricionista", f"mailto:{urllib.parse.quote(nutri_email)}?{mailto_n}",
+                             f"mail_nutri_{partido_id}"))
 
-        # ── Buscar más contactos ──────────────────────────────────────────
-        if status != "found_ai" and (len(emails) <= 1 or not (nutri_nombre or nutri_email)):
-            if st.button("🔄 Buscar más contactos con IA", key=f"rebus_{partido_id}"):
-                with st.spinner(f"Buscando más información sobre {rival}..."):
-                    ai = find_contact(rival, use_ai=True,
-                                      city=lead.get("ciudad", ""), sport=lead.get("deporte", ""))
-                st.session_state[f"extra_{partido_id}"] = ai
-                st.rerun()
+        if row_btns:
+            cols = st.columns(len(row_btns) + 2)
+            for idx, (lbl, url, key) in enumerate(row_btns):
+                cols[idx].link_button(lbl, url, key=key)
 
-        extra = st.session_state.get(f"extra_{partido_id}")
-        if extra and extra.get("status") == "found_ai":
-            new_emails = extra.get("emails") or ([extra["email"]] if extra.get("email") else [])
-            for em in new_emails:
-                if em not in emails:
-                    col_e, col_b = st.columns([3, 1])
-                    col_e.markdown(f"✉️ `{em}` *(IA)*")
-                    mailto_x = urllib.parse.urlencode(
-                        {"subject": _build_subject(lead), "body": EMAIL_TEMPLATE}
-                    )
-                    col_b.link_button(
-                        "Enviar", f"mailto:{urllib.parse.quote(em)}?{mailto_x}",
-                        key=f"mail_extra_{partido_id}_{em}",
-                    )
+        if nutri_nombre or nutri_ig:
+            parts = []
+            label = f"Nutricionista{' ✓' if nutri_ok else ''}: "
+            if nutri_nombre: parts.append(f"👤 {nutri_nombre}")
+            if nutri_ig:     parts.append(f"📸 {nutri_ig}")
+            if nutri_email:  parts.append(f"✉️ {nutri_email}")
+            st.caption(label + " · ".join(parts))
 
-        # ── C: Email editable ─────────────────────────────────────────────
-        st.divider()
-        with st.expander("✉️ Personalizar email antes de enviar"):
-            asunto_edit = st.text_input("Asunto", value=_build_subject(lead),
-                                        key=f"subj_{partido_id}")
-            cuerpo_edit = st.text_area("Cuerpo", value=EMAIL_TEMPLATE, height=220,
-                                       key=f"body_{partido_id}")
-            if emails:
-                dest = st.selectbox("Destinatario", emails, key=f"dest_{partido_id}")
-                mailto_custom = urllib.parse.urlencode(
-                    {"subject": asunto_edit, "body": cuerpo_edit}
-                )
-                st.link_button(
-                    "📤 Abrir en gestor de correo",
-                    f"mailto:{urllib.parse.quote(dest)}?{mailto_custom}",
-                    type="primary", use_container_width=True,
-                )
-
-        # ── Verificar contacto ─────────────────────────────────────────────
+        # ── Buscar más / Verificar / Email personalizado / Notas ──────────
+        acc1, acc2, acc3 = st.columns([1, 1, 2])
+        if acc1.button("🔄 Más emails con IA", key=f"rebus_{partido_id}"):
+            with st.spinner(f"Buscando en {rival}..."):
+                ai = find_contact(rival, use_ai=True,
+                                  city=lead.get("ciudad", ""), sport=lead.get("deporte", ""))
+            st.session_state[f"extra_{partido_id}"] = ai
+            st.rerun()
         if not verificado and lead.get("nombre"):
-            if st.button("☑️ Marcar contacto como verificado", key=f"ver_{partido_id}"):
+            if acc2.button("☑️ Verificar", key=f"ver_{partido_id}"):
                 try:
                     db.marcar_verificado(lead["nombre"])
-                    st.toast(f"Contacto de {rival} marcado como verificado.")
+                    st.toast(f"Contacto de {rival} verificado.")
                     st.rerun()
                 except Exception as e:
                     st.warning(str(e))
 
-        # ── F: Notas del partido ──────────────────────────────────────────
-        _widget_notas(lead, partido_id)
+        with st.expander("✉️ Personalizar email · 📝 Notas"):
+            asunto_edit = st.text_input("Asunto", value=_build_subject(lead),
+                                        key=f"subj_{partido_id}")
+            cuerpo_edit = st.text_area("Cuerpo", value=EMAIL_TEMPLATE, height=180,
+                                       key=f"body_{partido_id}")
+            if all_emails:
+                dest = st.selectbox("Destinatario", all_emails, key=f"dest_{partido_id}")
+                mailto_custom = urllib.parse.urlencode({"subject": asunto_edit, "body": cuerpo_edit})
+                st.link_button("📤 Abrir en gestor de correo",
+                               f"mailto:{urllib.parse.quote(dest)}?{mailto_custom}",
+                               type="primary", use_container_width=True)
+            notas_actuales = lead.get("notas_partido") or ""
+            notas_nuevas = st.text_area("📝 Notas del partido", value=notas_actuales, height=68,
+                                        placeholder="Ej: prefieren menú sin gluten · hora de entrega...",
+                                        key=f"notas_{partido_id}", label_visibility="visible")
+            if st.button("Guardar notas", key=f"save_notas_{partido_id}"):
+                try:
+                    db.update_partido(partido_id, notas_partido=notas_nuevas or None)
+                    lead["notas_partido"] = notas_nuevas
+                    st.toast("Notas guardadas.")
+                except Exception as e:
+                    st.error(str(e))
 
 
 def _widget_notas(lead: dict, partido_id: str | None):
