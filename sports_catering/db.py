@@ -149,6 +149,7 @@ def upsert_contacto(contacto: dict) -> dict:
         "confianza":                contacto.get("confianza") or None,
         "notas":                    contacto.get("notas") or None,
         "nutricionista":            contacto.get("nutricionista_nombre") or None,
+        "nutricionista_telefono":   contacto.get("nutricionista_telefono") or None,
         "nutricionista_email":      contacto.get("nutricionista_email") or None,
         "nutricionista_instagram":  contacto.get("nutricionista_instagram") or None,
         "ultima_actualizacion":     datetime.now(timezone.utc).isoformat(),

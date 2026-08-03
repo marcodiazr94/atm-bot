@@ -1040,10 +1040,12 @@ def pantalla_contactos():
                     st.markdown(f"✉️ `{email}`")
 
                 nutri = c.get("nutricionista")
-                if nutri or c.get("nutricionista_email") or c.get("nutricionista_instagram"):
+                if nutri or c.get("nutricionista_email") or c.get("nutricionista_instagram") or c.get("nutricionista_telefono"):
                     parts = []
                     if nutri:
                         parts.append(f"👤 {nutri}")
+                    if c.get("nutricionista_telefono"):
+                        parts.append(f"📞 {c['nutricionista_telefono']}")
                     if c.get("nutricionista_instagram"):
                         parts.append(f"📸 {c['nutricionista_instagram']}")
                     if c.get("nutricionista_email"):
@@ -1066,29 +1068,34 @@ def pantalla_contactos():
                             new_emails_x = e1.text_input("Emails extra (separados por coma)",
                                                           value=c.get("emails_extra") or "")
                             new_web      = e2.text_input("Web",              value=c.get("web") or "")
-                            new_nutri    = e1.text_input("Nutricionista (nombre)",
-                                                          value=c.get("nutricionista") or "")
-                            new_nutri_ig = e2.text_input("Instagram nutricionista",
-                                                          value=c.get("nutricionista_instagram") or "")
-                            new_nutri_em = st.text_input("Email nutricionista",
-                                                          value=c.get("nutricionista_email") or "")
+                            st.markdown("**Nutricionista / Dietista**")
+                            n1, n2 = st.columns(2)
+                            new_nutri      = n1.text_input("Nombre",
+                                                            value=c.get("nutricionista") or "")
+                            new_nutri_tel  = n2.text_input("Teléfono nutricionista",
+                                                            value=c.get("nutricionista_telefono") or "")
+                            new_nutri_em   = n1.text_input("Email nutricionista",
+                                                            value=c.get("nutricionista_email") or "")
+                            new_nutri_ig   = n2.text_input("Instagram nutricionista",
+                                                            value=c.get("nutricionista_instagram") or "")
                             save_edit = st.form_submit_button("Guardar", type="primary")
                         if save_edit:
                             db.upsert_contacto({
-                                "nombre":                  nombre,
-                                "email":                   new_email or None,
-                                "emails_extra":            new_emails_x or None,
-                                "telefono":                new_tel or None,
-                                "web":                     new_web or None,
-                                "nutricionista_nombre":    new_nutri or None,
-                                "nutricionista_instagram": new_nutri_ig or None,
-                                "nutricionista_email":     new_nutri_em or None,
-                                "verificado":              verificado,
-                                "fuente":                  c.get("fuente", "manual"),
-                                "deporte":                 c.get("deporte"),
-                                "confianza":               c.get("confianza"),
-                                "instagram":               c.get("instagram"),
-                                "notas":                   c.get("notas"),
+                                "nombre":                    nombre,
+                                "email":                     new_email or None,
+                                "emails_extra":              new_emails_x or None,
+                                "telefono":                  new_tel or None,
+                                "web":                       new_web or None,
+                                "nutricionista_nombre":      new_nutri or None,
+                                "nutricionista_telefono":    new_nutri_tel or None,
+                                "nutricionista_instagram":   new_nutri_ig or None,
+                                "nutricionista_email":       new_nutri_em or None,
+                                "verificado":                verificado,
+                                "fuente":                    c.get("fuente", "manual"),
+                                "deporte":                   c.get("deporte"),
+                                "confianza":                 c.get("confianza"),
+                                "instagram":                 c.get("instagram"),
+                                "notas":                     c.get("notas"),
                             })
                             st.toast(f"'{nombre}' actualizado.")
                             st.rerun()
@@ -1107,8 +1114,9 @@ def pantalla_contactos():
             st.markdown("**Nutricionista / Dietista**")
             nn1, nn2 = st.columns(2)
             nutri_new        = nn1.text_input("Nombre")
-            nutri_ig_new     = nn2.text_input("Instagram")
-            nutri_email_new  = nn1.text_input("Email")
+            nutri_tel_new    = nn2.text_input("Teléfono nutricionista")
+            nutri_email_new  = nn1.text_input("Email nutricionista")
+            nutri_ig_new     = nn2.text_input("Instagram nutricionista")
             notas_new        = st.text_area("Notas", height=60)
             submitted        = st.form_submit_button("Guardar", type="primary")
 
@@ -1118,18 +1126,19 @@ def pantalla_contactos():
             else:
                 try:
                     db.upsert_contacto({
-                        "nombre":                  nombre_new,
-                        "deporte":                 deporte_new,
-                        "email":                   email_new or None,
-                        "emails_extra":            emails_extra_new or None,
-                        "telefono":                telefono_new or None,
-                        "web":                     web_new or None,
-                        "nutricionista_nombre":    nutri_new or None,
-                        "nutricionista_instagram": nutri_ig_new or None,
-                        "nutricionista_email":     nutri_email_new or None,
-                        "notas":                   notas_new or None,
-                        "verificado":              True,
-                        "fuente":                  "manual",
+                        "nombre":                    nombre_new,
+                        "deporte":                   deporte_new,
+                        "email":                     email_new or None,
+                        "emails_extra":              emails_extra_new or None,
+                        "telefono":                  telefono_new or None,
+                        "web":                       web_new or None,
+                        "nutricionista_nombre":      nutri_new or None,
+                        "nutricionista_telefono":    nutri_tel_new or None,
+                        "nutricionista_instagram":   nutri_ig_new or None,
+                        "nutricionista_email":       nutri_email_new or None,
+                        "notas":                     notas_new or None,
+                        "verificado":                True,
+                        "fuente":                    "manual",
                     })
                     st.success(f"Contacto '{nombre_new}' guardado.")
                     st.rerun()
