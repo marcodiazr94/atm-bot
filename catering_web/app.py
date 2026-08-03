@@ -943,24 +943,23 @@ def pantalla_calendario():
         return
 
     st.caption(f"{len(partidos)} partidos encontrados · Cambia el estado directamente en la tabla y pulsa **Guardar cambios**.")
-    df = pd.DataFrame(partidos)
-    df["_id"]   = df["id"]
-    df["Fecha"] = pd.to_datetime(df["fecha"]).dt.strftime("%d/%m/%Y")
-    df = df.rename(columns={
-        "equipo":  "Equipo local",
-        "rival":   "Rival (visitante)",
-        "deporte": "Deporte",
-        "ciudad":  "Ciudad",
-        "lugar":   "Pabellón",
-        "estado":  "Estado",
-    })
-    df["Estado"] = df["Estado"].map(ESTADOS_DISPLAY).fillna("⬜ Sin contactar")
 
-    cols_show    = ["Fecha", "Equipo local", "Rival (visitante)", "Estado", "Deporte", "Ciudad", "Pabellón"]
-    existing_cols = [c for c in cols_show if c in df.columns]
+    df_raw = pd.DataFrame(partidos).reset_index(drop=True)
+    ids_serie     = df_raw["id"].copy()
+    estados_serie = df_raw["estado"].map(ESTADOS_DISPLAY).fillna("⬜ Sin contactar").copy()
+
+    df_display = pd.DataFrame({
+        "Fecha":             pd.to_datetime(df_raw["fecha"]).dt.strftime("%d/%m/%Y"),
+        "Equipo local":      df_raw["equipo"],
+        "Rival (visitante)": df_raw["rival"],
+        "Estado":            estados_serie,
+        "Deporte":           df_raw["deporte"],
+        "Ciudad":            df_raw["ciudad"],
+        "Pabellón":          df_raw.get("lugar", pd.Series([""] * len(df_raw))),
+    }).reset_index(drop=True)
 
     edited = st.data_editor(
-        df[existing_cols],
+        df_display,
         column_config={
             "Estado": st.column_config.SelectboxColumn(
                 "Estado",
@@ -975,17 +974,14 @@ def pantalla_calendario():
 
     if st.button("💾 Guardar cambios de estado", type="primary"):
         cambios = 0
-        for i in range(len(df)):
-            estado_orig = df.iloc[i]["Estado"]
-            estado_nuevo = edited.iloc[i]["Estado"]
-            if estado_orig != estado_nuevo:
-                pid      = df.iloc[i]["_id"]
-                nuevo_db = ESTADOS_DB.get(estado_nuevo, "sin_contactar")
+        for i in range(len(df_display)):
+            if estados_serie.iloc[i] != edited.iloc[i]["Estado"]:
+                nuevo_db = ESTADOS_DB.get(edited.iloc[i]["Estado"], "sin_contactar")
                 try:
-                    db.update_partido(pid, estado=nuevo_db)
+                    db.update_partido(ids_serie.iloc[i], estado=nuevo_db)
                     cambios += 1
                 except Exception as e:
-                    st.error(f"Error guardando fila {i}: {e}")
+                    st.error(f"Error en fila {i}: {e}")
         if cambios:
             st.toast(f"✅ {cambios} estado(s) actualizados.")
             st.rerun()
