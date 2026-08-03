@@ -190,12 +190,11 @@ def pantalla_inicio():
                     dias = _dias_para(p)
                     alerta   = " 🔴" if (dias is not None and 0 <= dias <= DIAS_AVISO) else ""
                     fecha_txt = fd.strftime("%d/%m/%Y") if fd else "?"
+                    nota_txt = f" · 📝 {p['notas_partido']}" if p.get("notas_partido") else ""
                     st.markdown(
                         f"**{p.get('equipo','')} vs {p.get('rival','')}**{alerta} · "
-                        f"{fecha_txt} · {p.get('deporte','')} · {p.get('ciudad','')}"
+                        f"{fecha_txt} · {p.get('deporte','')} · {p.get('ciudad','')}{nota_txt}"
                     )
-                    if p.get("notas_partido"):
-                        st.caption(f"📝 {p['notas_partido']}")
 
     # ── Resumen financiero ─────────────────────────────────────────────────
     if ing_confirmado > 0:
@@ -639,24 +638,17 @@ def pantalla_pedidos():
         with st.container(border=True):
             row_h, row_m = st.columns([3, 1])
             with row_h:
+                sheet_txt = f" · [📊 Sheet]({p['link_sheet']})" if p.get("link_sheet") else ""
                 st.markdown(
                     f"**{p.get('equipo','')} vs {p.get('rival','')}** · "
-                    f"📅 {fecha_str} · `{p.get('deporte','')}` · {p.get('ciudad','')}"
+                    f"📅 {fecha_str} · `{p.get('deporte','')}` · {p.get('ciudad','')}{sheet_txt}"
                 )
-                st.caption(f"Contacto: {estado_contacto} · Pago: {estado_pago_txt}")
-                logistica_linea = []
-                if p.get("hora_entrega"):
-                    logistica_linea.append(f"🕐 {p['hora_entrega']}")
-                if p.get("telefono_chofer"):
-                    logistica_linea.append(f"🚗 {p['telefono_chofer']}")
-                if p.get("direccion_entrega"):
-                    logistica_linea.append(f"📍 {p['direccion_entrega']}")
-                if logistica_linea:
-                    st.caption(" · ".join(logistica_linea))
-                if p.get("link_sheet"):
-                    st.markdown(f"📊 [Ver pedidos en Google Sheet]({p['link_sheet']})")
-                if p.get("notas_partido"):
-                    st.caption(f"📝 {p['notas_partido']}")
+                linea2 = [f"Contacto: {estado_contacto}", f"Pago: {estado_pago_txt}"]
+                if p.get("hora_entrega"):       linea2.append(f"🕐 {p['hora_entrega']}")
+                if p.get("telefono_chofer"):    linea2.append(f"🚗 {p['telefono_chofer']}")
+                if p.get("direccion_entrega"):  linea2.append(f"📍 {p['direccion_entrega']}")
+                if p.get("notas_partido"):      linea2.append(f"📝 {p['notas_partido']}")
+                st.caption(" · ".join(linea2))
             with row_m:
                 if imp_conf > 0:
                     st.metric("Confirmado", f"{imp_conf:.0f} €",
@@ -1016,13 +1008,19 @@ def pantalla_contactos():
                         emails.append(e)
 
             with st.container(border=True):
+                # Fila 1: nombre · deporte · fuente · tel · web · ig | Borrar
                 h1, h2 = st.columns([4, 1])
-                with h1:
-                    st.markdown(
-                        f"**{badge} {nombre}** · `{c.get('deporte','') or ''}` · "
-                        f"*{c.get('fuente','') or ''}*"
-                        + (f" · confianza {c.get('confianza')}" if c.get("confianza") else "")
-                    )
+                info_parts = []
+                if c.get("telefono"):  info_parts.append(f"📞 {c['telefono']}")
+                if c.get("web"):       info_parts.append(f"🌐 [{c['web']}]({c['web']})")
+                if c.get("instagram"): info_parts.append(f"📸 {c['instagram']}")
+                info_str = (" · " + " · ".join(info_parts)) if info_parts else ""
+                h1.markdown(
+                    f"**{badge} {nombre}** · `{c.get('deporte','') or ''}` · "
+                    f"*{c.get('fuente','') or ''}*"
+                    + (f" · confianza {c.get('confianza')}" if c.get("confianza") else "")
+                    + info_str
+                )
                 with h2:
                     if st.button("🗑️ Borrar", key=f"del_{nombre}"):
                         try:
@@ -1034,41 +1032,31 @@ def pantalla_contactos():
                         except Exception as e:
                             st.error(str(e))
 
-                info = []
-                if c.get("telefono"):
-                    info.append(f"📞 {c['telefono']}")
-                if c.get("web"):
-                    info.append(f"🌐 [{c['web']}]({c['web']})")
-                if c.get("instagram"):
-                    info.append(f"📸 {c['instagram']}")
-                if info:
-                    st.caption(" · ".join(info))
-
+                # Emails con botón Enviar
                 for email in emails:
-                    st.markdown(f"✉️ `{email}`")
+                    ce, cb = st.columns([4, 1])
+                    ce.markdown(f"✉️ `{email}`")
+                    cb.link_button("Enviar", f"mailto:{urllib.parse.quote(email)}",
+                                   key=f"mail_c_{nombre}_{email}")
 
+                # Nutricionista (una línea)
                 nutri = c.get("nutricionista")
                 if nutri or c.get("nutricionista_email") or c.get("nutricionista_instagram") or c.get("nutricionista_telefono"):
                     parts = []
-                    if nutri:
-                        parts.append(f"👤 {nutri}")
-                    if c.get("nutricionista_telefono"):
-                        parts.append(f"📞 {c['nutricionista_telefono']}")
-                    if c.get("nutricionista_instagram"):
-                        parts.append(f"📸 {c['nutricionista_instagram']}")
-                    if c.get("nutricionista_email"):
-                        parts.append(f"✉️ {c['nutricionista_email']}")
+                    if nutri: parts.append(f"👤 {nutri}")
+                    if c.get("nutricionista_telefono"):  parts.append(f"📞 {c['nutricionista_telefono']}")
+                    if c.get("nutricionista_instagram"): parts.append(f"📸 {c['nutricionista_instagram']}")
+                    if c.get("nutricionista_email"):     parts.append(f"✉️ {c['nutricionista_email']}")
                     st.caption("Nutricionista: " + " · ".join(parts))
 
-                btn1, btn2 = st.columns([1, 3])
+                # Acciones: Verificar + Editar en la misma fila
                 if not verificado:
-                    if btn1.button("☑️ Verificar", key=f"ver_c_{nombre}"):
+                    if st.button("☑️ Verificar", key=f"ver_c_{nombre}"):
                         db.marcar_verificado(nombre)
                         st.toast(f"'{nombre}' marcado como verificado.")
                         st.rerun()
 
-                with btn2:
-                    with st.expander("✏️ Editar"):
+                with st.expander("✏️ Editar"):
                         with st.form(f"edit_{nombre}"):
                             e1, e2 = st.columns(2)
                             new_email    = e1.text_input("Email principal",  value=c.get("email") or "")
