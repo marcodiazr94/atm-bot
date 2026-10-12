@@ -583,6 +583,88 @@ def pantalla_pedidos():
         st.info("No hay partidos en el calendario. Importa los calendarios desde 'Calendario de temporada'.")
         return
 
+    # ── Añadir pedido manual ──────────────────────────────────────────────
+    with st.expander("➕ Añadir pedido manual"):
+        try:
+            todos_eq = db.get_partidos()
+            equipos_ped = sorted({p["equipo"] for p in todos_eq if p.get("equipo")})
+            info_eq_ped = {}
+            for p in todos_eq:
+                eq = p.get("equipo","")
+                if eq and eq not in info_eq_ped:
+                    info_eq_ped[eq] = {"ciudad": p.get("ciudad",""), "deporte": p.get("deporte","")}
+        except Exception:
+            equipos_ped = []
+            info_eq_ped = {}
+
+        opc_ped = equipos_ped + ["── Nuevo equipo ──"]
+        sel_ped = st.selectbox("Equipo local", opc_ped, key="ped_eq_sel")
+        nuevo_ped = sel_ped == "── Nuevo equipo ──"
+
+        pp1, pp2, pp3 = st.columns(3)
+        if nuevo_ped:
+            equipo_ped  = pp1.text_input("Nombre del equipo *", key="ped_eq_nom")
+            ciudad_ped  = pp2.selectbox("Ciudad", ["OVIEDO","GIJON"], key="ped_ciudad")
+            deporte_ped = pp3.selectbox("Deporte", [d for d in DEPORTES if d != "Todos"], key="ped_deporte")
+        else:
+            equipo_ped  = sel_ped
+            inf         = info_eq_ped.get(sel_ped, {})
+            ciudad_ped  = pp1.selectbox("Ciudad", ["OVIEDO","GIJON"],
+                                        index=["OVIEDO","GIJON"].index(inf.get("ciudad","OVIEDO")) if inf.get("ciudad") in ["OVIEDO","GIJON"] else 0,
+                                        key="ped_ciudad2")
+            deporte_ped = pp2.selectbox("Deporte", [d for d in DEPORTES if d != "Todos"],
+                                        index=max(0,[d for d in DEPORTES if d != "Todos"].index(inf["deporte"])) if inf.get("deporte") in DEPORTES else 0,
+                                        key="ped_deporte2")
+
+        pr1, pr2, pr3 = st.columns(3)
+        rival_ped  = pr1.text_input("Rival (visitante) *", key="ped_rival")
+        fecha_ped  = pr2.date_input("Fecha *", key="ped_fecha")
+        hora_ped   = pr3.text_input("Hora (ej: 18:30)", key="ped_hora")
+
+        pi1, pi2, pi3 = st.columns(3)
+        importe_ped    = pi1.number_input("Importe (€)", min_value=0.0, step=50.0, key="ped_importe")
+        estado_pago_ped = pi2.selectbox("Estado de pago", ESTADOS_PAGO_LISTA, key="ped_estado_pago")
+        notas_ped      = pi3.text_input("Notas", key="ped_notas")
+
+        if st.button("➕ Guardar pedido", key="ped_guardar", type="primary"):
+            nombre_final_ped = equipo_ped.strip() if nuevo_ped else equipo_ped
+            if not nombre_final_ped or not rival_ped.strip():
+                st.warning("Equipo y rival son obligatorios.")
+            else:
+                from datetime import datetime as _dt2, timezone as _tz2
+                fecha_dt_ped = _dt2.combine(fecha_ped, _dt2.min.time()).replace(tzinfo=_tz2.utc)
+                try:
+                    db.upsert_partidos([{
+                        "equipo":    nombre_final_ped.upper(),
+                        "ciudad":    ciudad_ped,
+                        "deporte":   deporte_ped,
+                        "rival":     rival_ped.strip().upper(),
+                        "fecha":     fecha_dt_ped,
+                        "hora":      hora_ped.strip() or None,
+                        "source":    "manual",
+                        "temporada": "2026-27",
+                    }])
+                    # Buscar el id recién insertado para guardar el pedido
+                    recientes = db.get_partidos()
+                    match = next((p for p in recientes
+                                  if p.get("equipo","").upper() == nombre_final_ped.upper()
+                                  and p.get("rival","").upper() == rival_ped.strip().upper()
+                                  and (p.get("fecha") or "").startswith(str(fecha_ped))), None)
+                    if match:
+                        update_fields = {}
+                        if importe_ped > 0:
+                            update_fields["importe_confirmado"] = importe_ped
+                        if estado_pago_ped:
+                            update_fields["estado_pago"] = ESTADOS_PAGO_DB.get(estado_pago_ped, "pendiente")
+                        if notas_ped.strip():
+                            update_fields["notas_partido"] = notas_ped.strip()
+                        if update_fields:
+                            db.update_partido(match["id"], **update_fields)
+                    st.success(f"✅ Pedido añadido: {nombre_final_ped.upper()} vs {rival_ped.strip().upper()}")
+                    st.rerun()
+                except Exception as e:
+                    st.error(str(e))
+
     # ── Filtros ──────────────────────────────────────────────────────────
     now = datetime.now(timezone.utc)
     f1, f2, f3 = st.columns(3)
@@ -738,6 +820,57 @@ def pantalla_calendario():
 
     cfg   = _cargar_config()
     teams = cfg.get("teams", [])
+
+    # ── Equipos con calendario cargado ────────────────────────────────────────
+    _PROMPT_EXCEL = """Extrae el calendario de este equipo desde las siguientes URLs y genera un archivo Excel con sus partidos en casa.
+
+**URLs:** [pega aquí 1 o 2 enlaces]
+**Equipo:** [nombre exacto tal como aparece en la web]
+
+**Requisitos del Excel:**
+
+- Solo partidos en los que el equipo figure como **local**. Nada más.
+- Temporada **2026-27** únicamente.
+- Exactamente **3 columnas**: `fecha`, `local`, `visitante`.
+- Las fechas deben guardarse como objetos `date` nativos de Python con `number_format = "YYYY-MM-DD"` — nunca como texto, para evitar que pandas las malinterprete:
+  ```python
+  from datetime import date
+  c = ws.cell(row=i, column=2, value=date(2026, 10, 2))
+  c.number_format = "YYYY-MM-DD"
+  ```
+- Si una jornada tiene rango de fechas (ej: "02-04 Oct"), usa el primer día.
+- Guarda el archivo en: `C:\\Users\\marco\\OneDrive - España A toda mesa SL\\atm-bot\\atm-bot\\[nombre_equipo]_2026-27_casa.xlsx`
+
+Cuando esté listo, envíame el archivo."""
+
+    iz, dr = st.columns([3, 1])
+    with iz:
+        with st.expander("📋 Equipos con calendario cargado"):
+            try:
+                todos = db.get_partidos()
+                equipos_cargados = {}
+                for p in todos:
+                    eq = p.get("equipo", "")
+                    dep = p.get("deporte", "")
+                    if eq:
+                        equipos_cargados.setdefault(eq, {"deporte": dep, "n": 0})
+                        equipos_cargados[eq]["n"] += 1
+                if equipos_cargados:
+                    for eq, info in sorted(equipos_cargados.items()):
+                        st.markdown(f"- **{eq}** — {info['deporte'].title()} · {info['n']} partidos")
+                else:
+                    st.caption("No hay equipos con calendario cargado.")
+            except Exception:
+                st.caption("No se pudo conectar con la base de datos.")
+    with dr:
+        if st.button("📝 Prompt Excel", use_container_width=True,
+                     help="Muestra el prompt para crear un Excel de calendario en otro chat"):
+            st.session_state["_show_prompt"] = not st.session_state.get("_show_prompt", False)
+
+    if st.session_state.get("_show_prompt", False):
+        st.code(_PROMPT_EXCEL, language="markdown")
+
+    st.divider()
 
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -896,6 +1029,70 @@ def pantalla_calendario():
                                     st.error(str(e))
                 except Exception as e:
                     st.error(f"Error leyendo el archivo: {e}")
+
+    with st.expander("➕ Añadir partido manualmente"):
+        try:
+            todos_cal = db.get_partidos()
+            equipos_existentes = sorted({p["equipo"] for p in todos_cal if p.get("equipo")})
+            info_por_equipo = {}
+            for p in todos_cal:
+                eq = p.get("equipo", "")
+                if eq and eq not in info_por_equipo:
+                    info_por_equipo[eq] = {"ciudad": p.get("ciudad",""), "deporte": p.get("deporte",""), "lugar": p.get("lugar","")}
+        except Exception:
+            equipos_existentes = []
+            info_por_equipo = {}
+
+        opc_equipo = equipos_existentes + ["── Nuevo equipo ──"]
+        sel_eq = st.selectbox("Equipo local", opc_equipo, key="man_equipo_sel")
+        nuevo_equipo = sel_eq == "── Nuevo equipo ──"
+
+        mc1, mc2, mc3 = st.columns(3)
+        if nuevo_equipo:
+            equipo_m  = mc1.text_input("Nombre del equipo *", key="man_eq_nombre")
+            ciudad_m  = mc2.selectbox("Ciudad", ["OVIEDO", "GIJON"], key="man_ciudad")
+            deporte_m = mc3.selectbox("Deporte", [d for d in DEPORTES if d != "Todos"], key="man_deporte")
+            lugar_m   = st.text_input("Pabellón", key="man_lugar")
+        else:
+            equipo_m  = sel_eq
+            info_eq   = info_por_equipo.get(sel_eq, {})
+            ciudad_m  = mc1.selectbox("Ciudad", ["OVIEDO", "GIJON"],
+                                      index=["OVIEDO","GIJON"].index(info_eq.get("ciudad","OVIEDO")) if info_eq.get("ciudad") in ["OVIEDO","GIJON"] else 0,
+                                      key="man_ciudad2")
+            deporte_m = mc2.selectbox("Deporte", [d for d in DEPORTES if d != "Todos"],
+                                      index=max(0, [d for d in DEPORTES if d != "Todos"].index(info_eq["deporte"])) if info_eq.get("deporte") in DEPORTES else 0,
+                                      key="man_deporte2")
+            lugar_m   = mc3.text_input("Pabellón", value=info_eq.get("lugar",""), key="man_lugar2")
+
+        mr1, mr2, mr3, mr4 = st.columns([2, 1, 1, 1])
+        rival_m    = mr1.text_input("Rival (visitante) *", key="man_rival")
+        fecha_m    = mr2.date_input("Fecha *", key="man_fecha")
+        hora_m     = mr3.text_input("Hora (ej: 18:30)", key="man_hora")
+        temp_m     = mr4.text_input("Temporada", value="2026-27", key="man_temp")
+
+        if st.button("➕ Guardar partido", key="man_guardar", type="primary"):
+            nombre_final = equipo_m.strip() if nuevo_equipo else equipo_m
+            if not nombre_final or not rival_m.strip():
+                st.warning("Equipo y rival son obligatorios.")
+            else:
+                from datetime import datetime as _dt, timezone as _tz
+                fecha_dt = _dt.combine(fecha_m, _dt.min.time()).replace(tzinfo=_tz.utc)
+                try:
+                    db.upsert_partidos([{
+                        "equipo":    nombre_final.upper(),
+                        "ciudad":    ciudad_m,
+                        "deporte":   deporte_m,
+                        "rival":     rival_m.strip().upper(),
+                        "fecha":     fecha_dt,
+                        "hora":      hora_m.strip() or None,
+                        "lugar":     lugar_m.strip() or None,
+                        "source":    "manual",
+                        "temporada": temp_m.strip(),
+                    }])
+                    st.success(f"✅ Partido añadido: {nombre_final.upper()} vs {rival_m.strip().upper()}")
+                    st.rerun()
+                except Exception as e:
+                    st.error(str(e))
 
     st.divider()
     try:
