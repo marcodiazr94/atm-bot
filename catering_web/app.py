@@ -285,6 +285,14 @@ def pantalla_partidos():
     m3.metric("Sin email", len(leads) - len(con_email))
     st.divider()
 
+    _buscar_p = st.text_input("🔍 Buscar equipo, rival, ciudad o deporte...", key="search_partidos")
+    if _buscar_p:
+        _q = _buscar_p.lower()
+        leads = [l for l in leads if _q in (l.get("equipo") or "").lower()
+                 or _q in (l.get("rival") or "").lower()
+                 or _q in (l.get("ciudad") or "").lower()
+                 or _q in (l.get("deporte") or "").lower()]
+
     for lead in leads:
         _tarjeta_partido(lead)
 
@@ -597,35 +605,36 @@ def pantalla_pedidos():
             equipos_ped = []
             info_eq_ped = {}
 
+        _pv = st.session_state.get("_ped_form_v", 0)
         opc_ped = equipos_ped + ["── Nuevo equipo ──"]
-        sel_ped = st.selectbox("Equipo local", opc_ped, key="ped_eq_sel")
+        sel_ped = st.selectbox("Equipo local", opc_ped, key=f"ped_eq_sel_{_pv}")
         nuevo_ped = sel_ped == "── Nuevo equipo ──"
 
         pp1, pp2, pp3 = st.columns(3)
         if nuevo_ped:
-            equipo_ped  = pp1.text_input("Nombre del equipo *", key="ped_eq_nom")
-            ciudad_ped  = pp2.selectbox("Ciudad", ["OVIEDO","GIJON"], key="ped_ciudad")
-            deporte_ped = pp3.selectbox("Deporte", [d for d in DEPORTES if d != "Todos"], key="ped_deporte")
+            equipo_ped  = pp1.text_input("Nombre del equipo *", key=f"ped_eq_nom_{_pv}")
+            ciudad_ped  = pp2.selectbox("Ciudad", ["OVIEDO","GIJON"], key=f"ped_ciudad_{_pv}")
+            deporte_ped = pp3.selectbox("Deporte", [d for d in DEPORTES if d != "Todos"], key=f"ped_deporte_{_pv}")
         else:
             equipo_ped  = sel_ped
             inf         = info_eq_ped.get(sel_ped, {})
             ciudad_ped  = pp1.selectbox("Ciudad", ["OVIEDO","GIJON"],
                                         index=["OVIEDO","GIJON"].index(inf.get("ciudad","OVIEDO")) if inf.get("ciudad") in ["OVIEDO","GIJON"] else 0,
-                                        key="ped_ciudad2")
+                                        key=f"ped_ciudad2_{_pv}")
             deporte_ped = pp2.selectbox("Deporte", [d for d in DEPORTES if d != "Todos"],
                                         index=max(0,[d for d in DEPORTES if d != "Todos"].index(inf["deporte"])) if inf.get("deporte") in DEPORTES else 0,
-                                        key="ped_deporte2")
+                                        key=f"ped_deporte2_{_pv}")
 
         pr1, pr2 = st.columns(2)
-        rival_ped  = pr1.text_input("Rival (visitante) *", key="ped_rival")
-        fecha_ped  = pr2.date_input("Fecha *", key="ped_fecha")
+        rival_ped  = pr1.text_input("Rival (visitante) *", key=f"ped_rival_{_pv}")
+        fecha_ped  = pr2.date_input("Fecha *", key=f"ped_fecha_{_pv}")
 
         pi1, pi2, pi3 = st.columns(3)
-        importe_ped    = pi1.number_input("Importe (€)", min_value=0.0, step=50.0, key="ped_importe")
-        estado_pago_ped = pi2.selectbox("Estado de pago", ESTADOS_PAGO_LISTA, key="ped_estado_pago")
-        notas_ped      = pi3.text_input("Notas", key="ped_notas")
+        importe_ped     = pi1.number_input("Importe (€)", min_value=0.0, step=50.0, key=f"ped_importe_{_pv}")
+        estado_pago_ped = pi2.selectbox("Estado de pago", ESTADOS_PAGO_LISTA, key=f"ped_estado_pago_{_pv}")
+        notas_ped       = pi3.text_input("Notas", key=f"ped_notas_{_pv}")
 
-        if st.button("➕ Guardar pedido", key="ped_guardar", type="primary"):
+        if st.button("➕ Guardar pedido", key=f"ped_guardar_{_pv}", type="primary"):
             nombre_final_ped = equipo_ped.strip() if nuevo_ped else equipo_ped
             if not nombre_final_ped or not rival_ped.strip():
                 st.warning("Equipo y rival son obligatorios.")
@@ -643,7 +652,6 @@ def pantalla_pedidos():
                         "source":    "manual",
                         "temporada": "2026-27",
                     }])
-                    # Buscar el id recién insertado para guardar el pedido
                     recientes = db.get_partidos()
                     match = next((p for p in recientes
                                   if p.get("equipo","").upper() == nombre_final_ped.upper()
@@ -660,6 +668,7 @@ def pantalla_pedidos():
                         if update_fields:
                             db.update_partido(match["id"], **update_fields)
                     st.success(f"✅ Pedido añadido: {nombre_final_ped.upper()} vs {rival_ped.strip().upper()}")
+                    st.session_state["_ped_form_v"] = _pv + 1
                     st.rerun()
                 except Exception as e:
                     st.error(str(e))
@@ -685,6 +694,16 @@ def pantalla_pedidos():
         if val_db:
             partidos = [p for p in partidos
                         if (p.get("estado_pago") or "pendiente") == val_db]
+
+    _buscar_ped = st.text_input("🔍 Buscar equipo, rival, ciudad, deporte o notas...", key="search_pedidos")
+    if _buscar_ped:
+        _qp = _buscar_ped.lower()
+        partidos = [p for p in partidos if _qp in (p.get("equipo") or "").lower()
+                    or _qp in (p.get("rival") or "").lower()
+                    or _qp in (p.get("ciudad") or "").lower()
+                    or _qp in (p.get("deporte") or "").lower()
+                    or _qp in (p.get("notas_partido") or "").lower()
+                    or _qp in (p.get("nutricionista") or "").lower()]
 
     partidos.sort(key=lambda p: _fecha_dt(p) or now)
 
@@ -1042,33 +1061,34 @@ Cuando esté listo, envíame el archivo."""
             equipos_existentes = []
             info_por_equipo = {}
 
+        _mv = st.session_state.get("_man_form_v", 0)
         opc_equipo = equipos_existentes + ["── Nuevo equipo ──"]
-        sel_eq = st.selectbox("Equipo local", opc_equipo, key="man_equipo_sel")
+        sel_eq = st.selectbox("Equipo local", opc_equipo, key=f"man_equipo_sel_{_mv}")
         nuevo_equipo = sel_eq == "── Nuevo equipo ──"
 
         mc1, mc2, mc3 = st.columns(3)
         if nuevo_equipo:
-            equipo_m  = mc1.text_input("Nombre del equipo *", key="man_eq_nombre")
-            ciudad_m  = mc2.selectbox("Ciudad", ["OVIEDO", "GIJON"], key="man_ciudad")
-            deporte_m = mc3.selectbox("Deporte", [d for d in DEPORTES if d != "Todos"], key="man_deporte")
-            lugar_m   = st.text_input("Pabellón", key="man_lugar")
+            equipo_m  = mc1.text_input("Nombre del equipo *", key=f"man_eq_nombre_{_mv}")
+            ciudad_m  = mc2.selectbox("Ciudad", ["OVIEDO", "GIJON"], key=f"man_ciudad_{_mv}")
+            deporte_m = mc3.selectbox("Deporte", [d for d in DEPORTES if d != "Todos"], key=f"man_deporte_{_mv}")
+            lugar_m   = st.text_input("Pabellón", key=f"man_lugar_{_mv}")
         else:
             equipo_m  = sel_eq
             info_eq   = info_por_equipo.get(sel_eq, {})
             ciudad_m  = mc1.selectbox("Ciudad", ["OVIEDO", "GIJON"],
                                       index=["OVIEDO","GIJON"].index(info_eq.get("ciudad","OVIEDO")) if info_eq.get("ciudad") in ["OVIEDO","GIJON"] else 0,
-                                      key="man_ciudad2")
+                                      key=f"man_ciudad2_{_mv}")
             deporte_m = mc2.selectbox("Deporte", [d for d in DEPORTES if d != "Todos"],
                                       index=max(0, [d for d in DEPORTES if d != "Todos"].index(info_eq["deporte"])) if info_eq.get("deporte") in DEPORTES else 0,
-                                      key="man_deporte2")
-            lugar_m   = mc3.text_input("Pabellón", value=info_eq.get("lugar",""), key="man_lugar2")
+                                      key=f"man_deporte2_{_mv}")
+            lugar_m   = mc3.text_input("Pabellón", value=info_eq.get("lugar",""), key=f"man_lugar2_{_mv}")
 
         mr1, mr2, mr3 = st.columns([2, 1, 1])
-        rival_m    = mr1.text_input("Rival (visitante) *", key="man_rival")
-        fecha_m    = mr2.date_input("Fecha *", key="man_fecha")
-        temp_m     = mr3.text_input("Temporada", value="2026-27", key="man_temp")
+        rival_m    = mr1.text_input("Rival (visitante) *", key=f"man_rival_{_mv}")
+        fecha_m    = mr2.date_input("Fecha *", key=f"man_fecha_{_mv}")
+        temp_m     = mr3.text_input("Temporada", value="2026-27", key=f"man_temp_{_mv}")
 
-        if st.button("➕ Guardar partido", key="man_guardar", type="primary"):
+        if st.button("➕ Guardar partido", key=f"man_guardar_{_mv}", type="primary"):
             nombre_final = equipo_m.strip() if nuevo_equipo else equipo_m
             if not nombre_final or not rival_m.strip():
                 st.warning("Equipo y rival son obligatorios.")
@@ -1088,6 +1108,7 @@ Cuando esté listo, envíame el archivo."""
                         "temporada": temp_m.strip(),
                     }])
                     st.success(f"✅ Partido añadido: {nombre_final.upper()} vs {rival_m.strip().upper()}")
+                    st.session_state["_man_form_v"] = _mv + 1
                     st.rerun()
                 except Exception as e:
                     st.error(str(e))
@@ -1106,6 +1127,14 @@ Cuando esté listo, envíame el archivo."""
     if not partidos:
         st.info("No hay partidos cargados. Pulsa **Actualizar desde calendarios** para importar la temporada.")
         return
+
+    _buscar_cal = st.text_input("🔍 Buscar equipo, rival, ciudad o deporte...", key="search_cal")
+    if _buscar_cal:
+        _qc = _buscar_cal.lower()
+        partidos = [p for p in partidos if _qc in (p.get("equipo") or "").lower()
+                    or _qc in (p.get("rival") or "").lower()
+                    or _qc in (p.get("ciudad") or "").lower()
+                    or _qc in (p.get("deporte") or "").lower()]
 
     st.caption(f"{len(partidos)} partidos encontrados · Cambia el estado directamente en la tabla y pulsa **Guardar cambios**.")
 
