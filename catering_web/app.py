@@ -606,18 +606,19 @@ def pantalla_pedidos():
             info_eq_ped = {}
 
         _pv = st.session_state.get("_ped_form_v", 0)
-        opc_ped = equipos_ped + ["── Nuevo equipo ──"]
+        opc_ped = ["── Nuevo equipo ──"] + equipos_ped
         sel_ped = st.selectbox("Equipo local", opc_ped, key=f"ped_eq_sel_{_pv}")
         nuevo_ped = sel_ped == "── Nuevo equipo ──"
 
-        pp1, pp2, pp3 = st.columns(3)
         if nuevo_ped:
-            equipo_ped  = pp1.text_input("Nombre del equipo *", key=f"ped_eq_nom_{_pv}")
-            ciudad_ped  = pp2.selectbox("Ciudad", ["OVIEDO","GIJON"], key=f"ped_ciudad_{_pv}")
-            deporte_ped = pp3.selectbox("Deporte", [d for d in DEPORTES if d != "Todos"], key=f"ped_deporte_{_pv}")
+            equipo_ped  = st.text_input("Nombre del equipo nuevo *", placeholder="ej. Balonmano Gijón", key=f"ped_eq_nom_{_pv}")
+            pp1, pp2 = st.columns(2)
+            ciudad_ped  = pp1.selectbox("Ciudad", ["OVIEDO","GIJON"], key=f"ped_ciudad_{_pv}")
+            deporte_ped = pp2.selectbox("Deporte", [d for d in DEPORTES if d != "Todos"], key=f"ped_deporte_{_pv}")
         else:
             equipo_ped  = sel_ped
             inf         = info_eq_ped.get(sel_ped, {})
+            pp1, pp2 = st.columns(2)
             ciudad_ped  = pp1.selectbox("Ciudad", ["OVIEDO","GIJON"],
                                         index=["OVIEDO","GIJON"].index(inf.get("ciudad","OVIEDO")) if inf.get("ciudad") in ["OVIEDO","GIJON"] else 0,
                                         key=f"ped_ciudad2_{_pv}")
@@ -1062,19 +1063,20 @@ Cuando esté listo, envíame el archivo."""
             info_por_equipo = {}
 
         _mv = st.session_state.get("_man_form_v", 0)
-        opc_equipo = equipos_existentes + ["── Nuevo equipo ──"]
+        opc_equipo = ["── Nuevo equipo ──"] + equipos_existentes
         sel_eq = st.selectbox("Equipo local", opc_equipo, key=f"man_equipo_sel_{_mv}")
         nuevo_equipo = sel_eq == "── Nuevo equipo ──"
 
-        mc1, mc2, mc3 = st.columns(3)
         if nuevo_equipo:
-            equipo_m  = mc1.text_input("Nombre del equipo *", key=f"man_eq_nombre_{_mv}")
-            ciudad_m  = mc2.selectbox("Ciudad", ["OVIEDO", "GIJON"], key=f"man_ciudad_{_mv}")
-            deporte_m = mc3.selectbox("Deporte", [d for d in DEPORTES if d != "Todos"], key=f"man_deporte_{_mv}")
-            lugar_m   = st.text_input("Pabellón", key=f"man_lugar_{_mv}")
+            equipo_m  = st.text_input("Nombre del equipo nuevo *", placeholder="ej. Balonmano Gijón", key=f"man_eq_nombre_{_mv}")
+            mc1, mc2, mc3 = st.columns(3)
+            ciudad_m  = mc1.selectbox("Ciudad", ["OVIEDO", "GIJON"], key=f"man_ciudad_{_mv}")
+            deporte_m = mc2.selectbox("Deporte", [d for d in DEPORTES if d != "Todos"], key=f"man_deporte_{_mv}")
+            lugar_m   = mc3.text_input("Pabellón", key=f"man_lugar_{_mv}")
         else:
             equipo_m  = sel_eq
             info_eq   = info_por_equipo.get(sel_eq, {})
+            mc1, mc2, mc3 = st.columns(3)
             ciudad_m  = mc1.selectbox("Ciudad", ["OVIEDO", "GIJON"],
                                       index=["OVIEDO","GIJON"].index(info_eq.get("ciudad","OVIEDO")) if info_eq.get("ciudad") in ["OVIEDO","GIJON"] else 0,
                                       key=f"man_ciudad2_{_mv}")
