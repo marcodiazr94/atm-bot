@@ -616,10 +616,9 @@ def pantalla_pedidos():
                                         index=max(0,[d for d in DEPORTES if d != "Todos"].index(inf["deporte"])) if inf.get("deporte") in DEPORTES else 0,
                                         key="ped_deporte2")
 
-        pr1, pr2, pr3 = st.columns(3)
+        pr1, pr2 = st.columns(2)
         rival_ped  = pr1.text_input("Rival (visitante) *", key="ped_rival")
         fecha_ped  = pr2.date_input("Fecha *", key="ped_fecha")
-        hora_ped   = pr3.text_input("Hora (ej: 18:30)", key="ped_hora")
 
         pi1, pi2, pi3 = st.columns(3)
         importe_ped    = pi1.number_input("Importe (€)", min_value=0.0, step=50.0, key="ped_importe")
@@ -640,7 +639,7 @@ def pantalla_pedidos():
                         "deporte":   deporte_ped,
                         "rival":     rival_ped.strip().upper(),
                         "fecha":     fecha_dt_ped,
-                        "hora":      hora_ped.strip() or None,
+                        "hora":      None,
                         "source":    "manual",
                         "temporada": "2026-27",
                     }])
@@ -1064,11 +1063,10 @@ Cuando esté listo, envíame el archivo."""
                                       key="man_deporte2")
             lugar_m   = mc3.text_input("Pabellón", value=info_eq.get("lugar",""), key="man_lugar2")
 
-        mr1, mr2, mr3, mr4 = st.columns([2, 1, 1, 1])
+        mr1, mr2, mr3 = st.columns([2, 1, 1])
         rival_m    = mr1.text_input("Rival (visitante) *", key="man_rival")
         fecha_m    = mr2.date_input("Fecha *", key="man_fecha")
-        hora_m     = mr3.text_input("Hora (ej: 18:30)", key="man_hora")
-        temp_m     = mr4.text_input("Temporada", value="2026-27", key="man_temp")
+        temp_m     = mr3.text_input("Temporada", value="2026-27", key="man_temp")
 
         if st.button("➕ Guardar partido", key="man_guardar", type="primary"):
             nombre_final = equipo_m.strip() if nuevo_equipo else equipo_m
@@ -1084,7 +1082,7 @@ Cuando esté listo, envíame el archivo."""
                         "deporte":   deporte_m,
                         "rival":     rival_m.strip().upper(),
                         "fecha":     fecha_dt,
-                        "hora":      hora_m.strip() or None,
+                        "hora":      None,
                         "lugar":     lugar_m.strip() or None,
                         "source":    "manual",
                         "temporada": temp_m.strip(),
